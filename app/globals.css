@@ -1,26 +1,212 @@
 @import "tailwindcss";
 
+/* ────────────────────────────────────────────────────────────────────────────
+   B2B analytics tool — clean white, neutral grays, sky-blue accent.
+   The token names (--bg, --fg, --line, --accent…) stay; only the values move
+   back to the original palette.
+─────────────────────────────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Cool, calm slate neutrals — softer than pure gray, no warmth that veers
+     editorial. */
+  --bg: #ffffff;
+  --bg-1: #f8fafc;          /* slate-50  */
+  --bg-2: #f1f5f9;          /* slate-100 */
+  --bg-3: #e2e8f0;          /* slate-200 */
+
+  --line: #e2e8f0;          /* slate-200 */
+  --line-strong: #cbd5e1;   /* slate-300 */
+
+  --fg: #0f172a;            /* slate-900 — calm near-black, not pure */
+  --fg-1: #334155;          /* slate-700 */
+  --fg-2: #64748b;          /* slate-500 */
+  --fg-3: #94a3b8;          /* slate-400 */
+  --fg-4: #cbd5e1;          /* slate-300 */
+
+  /* Accent — deep indigo. A jewel tone: calm, sophisticated, distinctive
+     without being shouty. Used sparingly for active states and primary
+     actions. */
+  --accent: #4338ca;        /* indigo-700 */
+  --accent-soft: #c7d2fe;   /* indigo-200 */
+  --accent-deep: #312e81;   /* indigo-900 */
+
+  --good: #15803d;          /* green-700 — calmer than emerald-500 */
+  --good-soft: #bbf7d0;
+  --warn: #b45309;          /* amber-700 — earthy, not neon */
+  --warn-soft: #fde68a;
+  --bad: #b91c1c;           /* red-700  — restrained */
+  --bad-soft: #fecaca;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-bg-1: var(--bg-1);
+  --color-bg-2: var(--bg-2);
+  --color-bg-3: var(--bg-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-fg-1: var(--fg-1);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-fg-4: var(--fg-4);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-deep: var(--accent-deep);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Inherit Geist from next/font (defined on <html> by layout.tsx). The fallback
+   only kicks in if the variable is missing, never silently letting the
+   browser fall through to its default `serif`. */
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+::selection { background: var(--accent); color: #fff; }
+
+.tabular { font-variant-numeric: tabular-nums; }
+.font-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-feature-settings: "ss02";
 }
+
+/* Eyebrow label — small, slightly tracked, used for section headers. */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+/* Markdown body — sky-blue links, neutral prose, restrained tables. */
+.markdown {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fg);
+}
+.markdown p { margin: 0.5rem 0; }
+.markdown p:first-child { margin-top: 0; }
+.markdown p:last-child { margin-bottom: 0; }
+.markdown strong { font-weight: 600; color: var(--fg); }
+.markdown em { font-style: italic; }
+.markdown a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+.markdown ul {
+  list-style: none;
+  padding-left: 0.85rem;
+  margin: 0.5rem 0;
+}
+.markdown ul li {
+  position: relative;
+  padding-left: 0.4rem;
+}
+.markdown ul li::before {
+  content: "—";
+  position: absolute;
+  left: -0.85rem;
+  color: var(--fg-3);
+}
+.markdown ol {
+  list-style: decimal;
+  padding-left: 1.4rem;
+  margin: 0.5rem 0;
+  font-variant-numeric: tabular-nums;
+}
+.markdown ol li::marker { color: var(--fg-3); }
+.markdown code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+  background: var(--bg-2);
+  border-radius: 3px;
+  color: var(--fg-1);
+}
+.markdown pre {
+  background: var(--fg);
+  color: var(--bg);
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  line-height: 1.55;
+  margin: 0.75rem 0;
+}
+.markdown pre code { background: transparent; padding: 0; color: inherit; }
+.markdown table {
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+.markdown th, .markdown td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+}
+.markdown th {
+  font-weight: 500;
+  color: var(--fg-2);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Subtle reveal on first paint. */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in-up { animation: fade-in-up 0.4s ease-out both; }
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.pulse-soft { animation: pulse-soft 1.4s ease-in-out infinite; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.composer-input {
+  font-family: inherit;
+  font-size: 14.5px;
+  line-height: 1.55;
+  background: transparent;
+  border: none;
+  resize: none;
+  width: 100%;
+  color: var(--fg);
+}
+.composer-input::placeholder { color: var(--fg-3); }
+.composer-input:focus { outline: none; }
+
+* { scrollbar-width: thin; scrollbar-color: var(--fg-4) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+}
+*:hover::-webkit-scrollbar-thumb { background: var(--fg-4); }
+*::-webkit-scrollbar-thumb:hover { background: var(--fg-3); }

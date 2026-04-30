@@ -1,0 +1,173 @@
+[
+  {
+    "id": "01-setup",
+    "name": "salesorderdetail row count",
+    "userQuery": "How many rows are in the sales order detail table?",
+    "groundTruthSql": "SELECT COUNT(*) AS rows FROM sales.salesorderdetail",
+    "expect": ["206953"],
+    "notes": "PDF claimed 121317 — that was wrong. Live count is 206953."
+  },
+  {
+    "id": "02-discovery",
+    "name": "Schema discovery — 5 schemas exposed",
+    "userQuery": "What schemas are available in this database?",
+    "groundTruthSql": "SELECT json_agg(schema) AS list FROM (SELECT schema FROM (VALUES ('humanresources'),('person'),('production'),('purchasing'),('sales')) AS t(schema)) x",
+    "expect": ["humanresources", "person", "production", "purchasing", "sales"]
+  },
+  {
+    "id": "03-order-with-details",
+    "name": "Order 43659 — header + line items",
+    "userQuery": "Show me order 43659 with all its line items.",
+    "groundTruthSql": "SELECT (SELECT COUNT(*) FROM sales.salesorderheader WHERE salesorderid=43659) AS header_count, (SELECT COUNT(*) FROM sales.salesorderdetail WHERE salesorderid=43659) AS detail_count",
+    "expect": ["43659", "12"]
+  },
+  {
+    "id": "04-product-category-hierarchy",
+    "name": "Most expensive product (listprice > 3000) — category hierarchy",
+    "userQuery": "What category does our most expensive product (listprice over 3000) belong to?",
+    "groundTruthSql": "SELECT p.name AS product, p.listprice, ps.name AS subcat, pc.name AS cat FROM production.product p JOIN production.productsubcategory ps USING (productsubcategoryid) JOIN production.productcategory pc USING (productcategoryid) WHERE p.listprice > 3000 ORDER BY p.listprice DESC, p.productid LIMIT 1",
+    "expect": ["Road-150 Red", "Road Bikes", "Bikes", "3578.27"]
+  },
+  {
+    "id": "05-sales-order-fanout",
+    "name": "Biggest order with customer + salesperson + territory",
+    "userQuery": "Show me our biggest order with customer, salesperson, and territory information.",
+    "groundTruthSql": "SELECT soh.salesorderid, soh.subtotal, st.name AS territory FROM sales.salesorderheader soh JOIN sales.salesterritory st ON st.territoryid = soh.territoryid ORDER BY soh.subtotal DESC LIMIT 1",
+    "expect": ["51131", "Southwest"]
+  },
+  {
+    "id": "06-product-inventory",
+    "name": "Most-stocked product",
+    "userQuery": "Where is our most-stocked product stored?",
+    "groundTruthSql": "SELECT p.name AS product, l.name AS location, pi.shelf, pi.quantity FROM production.productinventory pi JOIN production.product p USING (productid) JOIN production.location l USING (locationid) ORDER BY pi.quantity DESC, p.productid LIMIT 1",
+    "expect": ["Seat Lug", "924"]
+  },
+  {
+    "id": "07-work-order-routing",
+    "name": "Highest-cost manufacturing step",
+    "userQuery": "Which manufacturing step has the highest cost?",
+    "groundTruthSql": "SELECT l.name AS location, MAX(wor.actualcost) AS cost FROM production.workorderrouting wor JOIN production.location l USING (locationid) WHERE wor.actualcost IS NOT NULL GROUP BY l.name ORDER BY cost DESC LIMIT 1",
+    "expect": ["Frame Forming", "92.25"]
+  },
+  {
+    "id": "08-purchase-order-chain",
+    "name": "Biggest purchase order with vendor + shipping",
+    "userQuery": "Show me our biggest purchase order with vendor and shipping details.",
+    "groundTruthSql": "SELECT poh.purchaseorderid, (poh.subtotal + poh.taxamt + poh.freight) AS total, (SELECT COUNT(*) FROM purchasing.purchaseorderdetail pod WHERE pod.purchaseorderid = poh.purchaseorderid) AS detail_count FROM purchasing.purchaseorderheader poh ORDER BY total DESC LIMIT 1",
+    "expect": ["4012"]
+  },
+  {
+    "id": "09-composite-fk-join",
+    "name": "Composite FK join — order 43664 special offer products",
+    "userQuery": "For order 43664, what special offers were applied to each line item?",
+    "groundTruthSql": "SELECT sod.salesorderid, sod.salesorderdetailid, sod.productid, sod.specialofferid FROM sales.salesorderdetail sod WHERE sod.salesorderid = 43664 ORDER BY sod.salesorderdetailid LIMIT 5",
+    "expect": ["43664"]
+  },
+  {
+    "id": "10-deep-cross-schema",
+    "name": "Deep cross-schema join — Northwest territory orders",
+    "userQuery": "Show me products sold in the Northwest territory (full chain from territory to product).",
+    "groundTruthSql": "SELECT st.name AS territory, COUNT(DISTINCT soh.salesorderid) AS orders FROM sales.salesterritory st JOIN sales.salesorderheader soh ON soh.territoryid = st.territoryid WHERE st.name = 'Northwest' GROUP BY st.name",
+    "expect": ["Northwest"]
+  },
+  {
+    "id": "11-employee-department",
+    "name": "Employee 1's current department and shift",
+    "userQuery": "What department and shift does employee #1 work in?",
+    "groundTruthSql": "SELECT d.name AS department, s.name AS shift FROM humanresources.employeedepartmenthistory edh JOIN humanresources.department d USING (departmentid) JOIN humanresources.shift s USING (shiftid) WHERE edh.businessentityid = 1 AND edh.enddate IS NULL",
+    "expect": ["Executive", "Day"]
+  },
+  {
+    "id": "12-address-hierarchy",
+    "name": "First address — state and country",
+    "userQuery": "Show me the first address with its state and country.",
+    "groundTruthSql": "SELECT a.city, sp.name AS state, cr.name AS country FROM person.address a JOIN person.stateprovince sp USING (stateprovinceid) JOIN person.countryregion cr ON cr.countryregioncode = sp.countryregioncode ORDER BY a.addressid LIMIT 1",
+    "expect": ["Bothell", "Washington", "United States"]
+  },
+  {
+    "id": "13-large-dataset-filter",
+    "name": "Top 5 most expensive line items",
+    "userQuery": "What are the top 5 most expensive line items across all orders?",
+    "groundTruthSql": "SELECT salesorderid, salesorderdetailid, productid, unitprice FROM sales.salesorderdetail ORDER BY unitprice DESC, salesorderdetailid LIMIT 5",
+    "expect": ["3578.27"]
+  },
+  {
+    "id": "14-top-salesperson",
+    "name": "Top salesperson by sales YTD",
+    "userQuery": "Who is our top salesperson and what territory do they cover?",
+    "groundTruthSql": "SELECT pp.firstname || ' ' || pp.lastname AS name, st.name AS territory, sp.salesytd FROM sales.salesperson sp JOIN person.person pp USING (businessentityid) LEFT JOIN sales.salesterritory st ON st.territoryid = sp.territoryid ORDER BY sp.salesytd DESC LIMIT 1",
+    "expect": ["Linda Mitchell", "Southwest", "4251368"]
+  },
+  {
+    "id": "15-store-account-management",
+    "name": "Store account management — A Bicycle Association",
+    "userQuery": "Which salesperson manages the store 'A Bicycle Association'?",
+    "groundTruthSql": "SELECT s.name AS store, pp.firstname || ' ' || pp.lastname AS rep, st.name AS territory FROM sales.store s JOIN sales.salesperson sp ON sp.businessentityid = s.salespersonid JOIN person.person pp ON pp.businessentityid = sp.businessentityid LEFT JOIN sales.salesterritory st ON st.territoryid = sp.territoryid WHERE s.name = 'A Bicycle Association'",
+    "expect": ["Michael Blythe", "Northeast"]
+  },
+  {
+    "id": "16-full-product-spec",
+    "name": "Full product spec for Touring Rear Wheel — model, category, inventory",
+    "userQuery": "Give me the full spec for the Touring Rear Wheel — its model, category, and total inventory across locations.",
+    "groundTruthSql": "SELECT p.name AS product, pm.name AS model, pc.name AS category, SUM(pi.quantity) AS total_qty FROM production.product p JOIN production.productinventory pi USING (productid) JOIN production.productmodel pm ON pm.productmodelid = p.productmodelid JOIN production.productsubcategory ps USING (productsubcategoryid) JOIN production.productcategory pc USING (productcategoryid) WHERE p.name = 'Touring Rear Wheel' GROUP BY p.name, pm.name, pc.name",
+    "expect": ["Touring Rear Wheel", "741"],
+    "notes": "PDF said qty 476 — that was per-location. Total across all locations is 741."
+  },
+  {
+    "id": "17-product-margin",
+    "name": "Highest-margin product (current cost vs current list price)",
+    "userQuery": "What is our highest-margin product right now?",
+    "groundTruthSql": "WITH curcost AS (SELECT productid, standardcost FROM production.productcosthistory WHERE enddate IS NULL), curprice AS (SELECT productid, listprice FROM production.productlistpricehistory WHERE enddate IS NULL) SELECT p.name, (cp.listprice - cc.standardcost) AS margin FROM production.product p JOIN curcost cc USING (productid) JOIN curprice cp USING (productid) ORDER BY margin DESC LIMIT 1",
+    "expect": ["Mountain-200", "1054.37"]
+  },
+  {
+    "id": "18-vendor-supply-chain",
+    "name": "Most expensive components vendor",
+    "userQuery": "Which vendor supplies our most expensive components?",
+    "groundTruthSql": "SELECT v.name AS vendor, p.name AS product, pv.standardprice FROM purchasing.productvendor pv JOIN purchasing.vendor v ON v.businessentityid = pv.businessentityid JOIN production.product p USING (productid) ORDER BY pv.standardprice DESC LIMIT 1",
+    "expect": ["Superior Bicycles", "Rear Brakes", "78.89"],
+    "notes": "PDF said 'Front Brakes' — actual top product at $78.89 is Rear Brakes."
+  },
+  {
+    "id": "19-executive-comp",
+    "name": "CEO pay rate and department",
+    "userQuery": "How much does our CEO earn and what department are they in?",
+    "groundTruthSql": "SELECT pp.firstname || ' ' || pp.lastname AS name, eph.rate, d.name AS department FROM humanresources.employee e JOIN person.person pp USING (businessentityid) JOIN humanresources.employeepayhistory eph USING (businessentityid) JOIN humanresources.employeedepartmenthistory edh ON edh.businessentityid = e.businessentityid AND edh.enddate IS NULL JOIN humanresources.department d USING (departmentid) ORDER BY eph.rate DESC LIMIT 1",
+    "expect": ["Ken", "125.5", "Executive"]
+  },
+  {
+    "id": "20-customer-contact-details",
+    "name": "Ken Sanchez full contact",
+    "userQuery": "Show me Ken Sanchez's contact info — email, phone, and address.",
+    "groundTruthSql": "SELECT pp.firstname, pp.lastname, ea.emailaddress, ph.phonenumber, a.addressline1, a.city FROM person.person pp LEFT JOIN person.emailaddress ea USING (businessentityid) LEFT JOIN person.personphone ph USING (businessentityid) LEFT JOIN person.businessentityaddress bea USING (businessentityid) LEFT JOIN person.address a ON a.addressid = bea.addressid WHERE pp.firstname = 'Ken' AND pp.lastname IN ('Sanchez', 'Sánchez') LIMIT 1",
+    "expect": ["Ken"]
+  },
+  {
+    "id": "21-credit-card-analysis",
+    "name": "Top 3 orders by subtotal — credit card type",
+    "userQuery": "What credit card types are used on our top 3 biggest orders by subtotal?",
+    "groundTruthSql": "SELECT soh.salesorderid, cc.cardtype, soh.subtotal FROM sales.salesorderheader soh JOIN sales.creditcard cc ON cc.creditcardid = soh.creditcardid ORDER BY soh.subtotal DESC LIMIT 3",
+    "expect": ["ColonialVoice", "51131"]
+  },
+  {
+    "id": "22-sales-reason-attribution",
+    "name": "Order 69647 sales reasons",
+    "userQuery": "Why did the customer buy on order 69647? Show all sales reasons.",
+    "groundTruthSql": "SELECT sr.name FROM sales.salesorderheadersalesreason shsr JOIN sales.salesreason sr USING (salesreasonid) WHERE shsr.salesorderid = 69647 ORDER BY sr.salesreasonid",
+    "expect": ["Price", "On Promotion"]
+  },
+  {
+    "id": "23-bill-of-materials",
+    "name": "Mountain-100 components (bomlevel = 1)",
+    "userQuery": "What components make up our Mountain-100 mountain bike at the first BOM level?",
+    "groundTruthSql": "SELECT COUNT(*) AS components FROM production.billofmaterials bom JOIN production.product asy ON asy.productid = bom.productassemblyid WHERE asy.name LIKE 'Mountain-100%' AND bom.bomlevel = 1 AND bom.enddate IS NULL",
+    "expect": ["Mountain-100"]
+  },
+  {
+    "id": "24-customer-geography",
+    "name": "Customer Jon Yang — full geographic chain",
+    "userQuery": "Show me customer Jon Yang's full geographic location.",
+    "groundTruthSql": "SELECT pp.firstname, pp.lastname, a.city, sp.name AS state, cr.name AS country FROM sales.customer c JOIN person.person pp ON pp.businessentityid = c.personid JOIN person.businessentityaddress bea ON bea.businessentityid = pp.businessentityid JOIN person.address a USING (addressid) JOIN person.stateprovince sp USING (stateprovinceid) JOIN person.countryregion cr ON cr.countryregioncode = sp.countryregioncode WHERE pp.firstname = 'Jon' AND pp.lastname = 'Yang' LIMIT 1",
+    "expect": ["Jon Yang", "Australia"]
+  }
+]
