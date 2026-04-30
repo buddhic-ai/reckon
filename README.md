@@ -37,6 +37,7 @@ fill in the values.
 | `DISCOVERY_TIMEOUT_MS` | no | `10000` | Knowledge prefetch timeout per section. |
 | `DISCOVERY_RETRIES` | no | `3` | Knowledge prefetch retries per section. |
 | `DEFAULT_TIMEZONE` | no | `UTC` | Default tz for cron triggers when a workflow doesn't set one. |
+| `HOST` | no | `127.0.0.1` | Bind address for `next start`. Override (e.g. `0.0.0.0`) only when the network already restricts ingress — v1 has no app-level auth. |
 | `NEXT_PUBLIC_BRAND_NAME` | no | `Reckon` | Inlined at build time — rebuild after changing. |
 | `NEXT_PUBLIC_BRAND_LOGO` | no | `/brand/logo.svg` | Path under `/public`. Inlined at build time. |
 | `TEST_DB_URL` | no | — | Direct Postgres URL used **only** by `pnpm smoke` for ground-truth verification. Not read by the app. |
@@ -77,10 +78,12 @@ To listen on a different port, pass `-p`:
 pnpm exec next start -H 127.0.0.1 -p 4000
 ```
 
-> **Security note.** v1 has no auth and intentionally binds to `127.0.0.1`.
-> Do not change the bind address to `0.0.0.0` or expose the port directly to
-> the internet — front it with a reverse proxy that handles TLS and auth
-> (nginx, Caddy, Cloudflare Tunnel, Tailscale, etc.).
+> **Security note.** v1 has no auth and binds to `127.0.0.1` by default. If
+> you need the app reachable on another interface (e.g. over a VPN), set
+> `HOST` in `.env.production` — but only when the network itself restricts
+> who can reach the port. Never expose it to the public internet without a
+> reverse proxy in front handling TLS and auth (nginx, Caddy, Cloudflare
+> Tunnel, Tailscale, etc.).
 
 ## Deploying on a standalone server
 
