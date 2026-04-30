@@ -132,7 +132,10 @@ export default function ChatPage({ params }: PageProps) {
   // events back into local state.
   const startTurn = useCallback(
     async (text: string, files: File[] = []) => {
-      if (busy) return;
+      // Guard on the reader ref rather than the closed-over `busy` state so
+      // an edit-then-restart sequence within a single tick (after the user
+      // edits a past message mid-run) isn't blocked by a stale closure value.
+      if (activeReaderRef.current) return;
       if (!text.trim() && files.length === 0) return;
       setBusy(true);
       try {
@@ -217,7 +220,7 @@ export default function ChatPage({ params }: PageProps) {
         setRunId(null);
       }
     },
-    [busy, chatId, appendEvent]
+    [chatId, appendEvent]
   );
 
   const stopRun = useCallback(async () => {
@@ -291,6 +294,48 @@ export default function ChatPage({ params }: PageProps) {
     [busy, chatId, persistEvents, startTurn]
   );
 
+  // Edit a past user message. Distinct from retry: this aborts any in-flight
+  // run, clears the SDK session, and restarts with a fresh ad-hoc analyst
+  // whose only context is prior user messages (no replayed assistant turns
+  // or tool calls). The truncate route does the abort + clearSession on the
+  // server too, so the old run can't race-write its session id back.
+  const onEditUserMessage = useCallback(
+    async (eventIndex: number, text: string) => {
+      // Tear down any in-flight local SSE stream / server run for this chat.
+      const liveRunId = activeRunIdRef.current ?? activeServerRunId;
+      const reader = activeReaderRef.current;
+      if (liveRunId) {
+        void fetch(`/api/run/${liveRunId}/abort`, { method: "POST" }).catch(
+          () => {}
+        );
+      }
+      if (reader) {
+        try {
+          await reader.cancel();
+        } catch {}
+      }
+      activeReaderRef.current = null;
+      activeRunIdRef.current = null;
+      setBusy(false);
+      setRunId(null);
+      setActiveServerRunId(null);
+
+      const res = await fetch(`/api/chats/${chatId}/truncate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventIndex, clearSession: true }),
+      });
+      if (!res.ok) return;
+      setEvents((prev) => {
+        const next = prev.slice(0, eventIndex);
+        persistEvents(next);
+        return next;
+      });
+      void startTurn(text, []);
+    },
+    [chatId, activeServerRunId, persistEvents, startTurn]
+  );
+
   if (notFound) {
     return (
       <AppShell>
@@ -338,6 +383,7 @@ export default function ChatPage({ params }: PageProps) {
           pendingAnswers={answers}
           onAnswer={onAnswer}
           onRetryUserMessage={onRetryUserMessage}
+          onEditUserMessage={onEditUserMessage}
         />
         <Composer
           onSend={startTurn}

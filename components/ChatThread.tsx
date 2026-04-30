@@ -17,6 +17,10 @@ interface Props {
   /** When provided, user messages get hover copy/retry actions. The handler
    *  is responsible for truncating server state and re-running. */
   onRetryUserMessage?: (eventIndex: number, text: string) => void;
+  /** When provided, user messages get a hover edit (pencil) action. The
+   *  handler must abort any in-flight run, wipe history at/after this index
+   *  with session reset, and start a fresh turn with the edited text. */
+  onEditUserMessage?: (eventIndex: number, text: string) => void;
 }
 
 type ToolPair = {
@@ -39,6 +43,7 @@ export function ChatThread({
   pendingAnswers,
   onAnswer,
   onRetryUserMessage,
+  onEditUserMessage,
 }: Props) {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -108,7 +113,8 @@ export function ChatThread({
             event={event}
             eventIndex={node.eventIndex}
             onRetry={onRetryUserMessage}
-            showActions={!!onRetryUserMessage}
+            onEdit={onEditUserMessage}
+            showActions={!!(onRetryUserMessage || onEditUserMessage)}
           />
         );
       })}

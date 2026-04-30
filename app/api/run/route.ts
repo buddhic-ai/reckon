@@ -5,6 +5,7 @@ import {
   createRun,
   finishRun,
   appendRunEvent,
+  getChatEvents,
 } from "@/lib/db/runs";
 import {
   createChat,
@@ -94,6 +95,17 @@ export async function POST(req: NextRequest) {
     ? getChat(boundChatId)?.session_id ?? undefined
     : undefined;
 
+  // When the user edits a past message, the truncate route clears session_id
+  // and wipes events at/after the edit point. We then start a fresh SDK
+  // session whose only context is the surviving user_message texts — no
+  // replayed assistant turns or tool calls. Built from chat events post-
+  // truncate, before we emit the new user_message below, so the edited
+  // message itself isn't double-included in the prompt.
+  const priorHistory =
+    boundChatId && !resumeSessionId
+      ? buildPriorUserHistoryFromChat(boundChatId)
+      : undefined;
+
   // Set title from the first user message if blank.
   if (chatId && initialUserMessage && initialUserMessage.trim()) {
     setChatTitleIfBlank(chatId, initialUserMessage);
@@ -164,8 +176,13 @@ export async function POST(req: NextRequest) {
         abortController,
         mode: "live",
         resumeSessionId,
+        priorHistory,
         onSessionId: boundChatId
           ? (sid) => {
+              // If this run was aborted (user edited a past message and we
+              // tore it down), don't re-stamp the chat with the old session
+              // id — the edit handler has already cleared it.
+              if (abortController.signal.aborted) return;
               try {
                 setChatSessionId(boundChatId, sid);
               } catch {
@@ -205,4 +222,34 @@ export async function POST(req: NextRequest) {
   });
 
   return new Response(stream, { headers: SSE_HEADERS });
+}
+
+/**
+ * Build a "prior user messages only" context block for a fresh SDK session.
+ * Used when starting a chat turn that explicitly does NOT resume — i.e. the
+ * user just edited a past message and wants the agent to answer from a clean
+ * slate, but with knowledge of what they'd already asked.
+ *
+ * Returns undefined when there are no prior user_message events (a brand-new
+ * chat's first turn), so the runner falls back to the bare system prompt.
+ */
+function buildPriorUserHistoryFromChat(chatId: string): string | undefined {
+  const events = getChatEvents(chatId);
+  const userMessages: string[] = [];
+  for (const ev of events) {
+    if (ev.type === "user_message" && ev.text.trim()) {
+      userMessages.push(ev.text);
+    }
+  }
+  if (userMessages.length === 0) return undefined;
+  const numbered = userMessages
+    .map((t, i) => `  ${i + 1}. ${t}`)
+    .join("\n");
+  return (
+    `The user previously sent these messages in earlier turns of this conversation. ` +
+    `This is a fresh session — there are no prior assistant responses to replay. ` +
+    `Treat them as background context only; do NOT re-answer them. ` +
+    `Respond to the CURRENT user message that follows below.\n\n` +
+    numbered
+  );
 }

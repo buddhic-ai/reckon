@@ -22,6 +22,11 @@ export function setChatSessionId(id: string, sessionId: string): void {
   db.prepare(`UPDATE chats SET session_id = ? WHERE id = ?`).run(sessionId, id);
 }
 
+export function clearChatSessionId(id: string): void {
+  const db = getDb();
+  db.prepare(`UPDATE chats SET session_id = NULL WHERE id = ?`).run(id);
+}
+
 export function getChat(id: string): ChatRow | null {
   const db = getDb();
   return (db.prepare("SELECT * FROM chats WHERE id = ?").get(id) as ChatRow | undefined) ?? null;

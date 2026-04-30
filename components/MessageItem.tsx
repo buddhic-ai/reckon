@@ -1,42 +1,44 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { AlertOctagon, Check, Copy, RefreshCw } from "lucide-react";
+import { AlertOctagon, Check, Copy, Pencil, RefreshCw } from "lucide-react";
 import type { RunEvent } from "@/lib/runtime/event-types";
 
 interface Props {
   event: RunEvent;
   /** Index of this event in the chat thread's full event list. Required for
-   *  retry to identify the truncation point. */
+   *  retry/edit to identify the truncation point. */
   eventIndex?: number;
   /** Triggered when the user clicks "retry" on their own message. The handler
    *  is responsible for truncating server state and re-running. */
   onRetry?: (eventIndex: number, text: string) => void;
-  /** When true, copy/retry icons fade in on hover under user messages. */
+  /** Triggered when the user finishes editing a past user message. Wipes all
+   *  history at and after this index, clears the SDK session, and restarts
+   *  the ad-hoc analyst with the new text + only past user messages as
+   *  context. */
+  onEdit?: (eventIndex: number, text: string) => void;
+  /** When true, copy/edit/retry icons fade in on hover under user messages. */
   showActions?: boolean;
 }
 
-export function MessageItem({ event, eventIndex, onRetry, showActions }: Props) {
+export function MessageItem({
+  event,
+  eventIndex,
+  onRetry,
+  onEdit,
+  showActions,
+}: Props) {
   if (event.type === "user_message") {
     return (
-      <div className="group/user flex justify-end">
-        <div className="flex max-w-[80%] flex-col items-end gap-1">
-          <div className="rounded-2xl rounded-br-sm bg-fg px-3.5 py-2 text-[14px] leading-relaxed text-bg">
-            <div className="markdown !text-bg [&_*]:!text-bg [&_a]:!text-bg [&_a]:!underline">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.text}</ReactMarkdown>
-            </div>
-          </div>
-          {showActions ? (
-            <UserMessageActions
-              text={event.text}
-              eventIndex={eventIndex}
-              onRetry={onRetry}
-            />
-          ) : null}
-        </div>
-      </div>
+      <UserMessage
+        text={event.text}
+        eventIndex={eventIndex}
+        onRetry={onRetry}
+        onEdit={onEdit}
+        showActions={showActions}
+      />
     );
   }
   if (event.type === "thought") {
@@ -79,14 +81,130 @@ export function MessageItem({ event, eventIndex, onRetry, showActions }: Props) 
   return null;
 }
 
-function UserMessageActions({
+function UserMessage({
   text,
   eventIndex,
   onRetry,
+  onEdit,
+  showActions,
 }: {
   text: string;
   eventIndex?: number;
   onRetry?: (eventIndex: number, text: string) => void;
+  onEdit?: (eventIndex: number, text: string) => void;
+  showActions?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(text);
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (!editing) return;
+    const el = taRef.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+    autoSize(el);
+  }, [editing]);
+
+  if (editing) {
+    const submit = () => {
+      const next = draft.trim();
+      if (!next || !onEdit || eventIndex == null) {
+        setEditing(false);
+        setDraft(text);
+        return;
+      }
+      setEditing(false);
+      onEdit(eventIndex, next);
+    };
+    const cancel = () => {
+      setEditing(false);
+      setDraft(text);
+    };
+    return (
+      <div className="flex justify-end">
+        <div className="flex w-full max-w-[80%] flex-col items-end gap-1.5">
+          <div className="w-full rounded-2xl rounded-br-sm bg-fg px-3.5 py-2 text-bg">
+            <textarea
+              ref={taRef}
+              value={draft}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                autoSize(e.currentTarget);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submit();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  cancel();
+                }
+              }}
+              rows={1}
+              className="w-full resize-none bg-transparent text-[14px] leading-relaxed text-bg placeholder:text-bg/60 focus:outline-none"
+            />
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px] text-fg-3">
+            <span>Enter to send · Esc to cancel</span>
+            <button
+              type="button"
+              onClick={cancel}
+              className="rounded-md px-2 py-0.5 text-fg-2 hover:bg-bg-2 hover:text-fg-1"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!draft.trim() || draft.trim() === text}
+              className="rounded-md bg-fg px-2 py-0.5 font-medium text-bg hover:bg-fg-1 disabled:bg-bg-3 disabled:text-fg-3"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="group/user flex justify-end">
+      <div className="flex max-w-[80%] flex-col items-end gap-1">
+        <div className="rounded-2xl rounded-br-sm bg-fg px-3.5 py-2 text-[14px] leading-relaxed text-bg">
+          <div className="markdown !text-bg [&_*]:!text-bg [&_a]:!text-bg [&_a]:!underline">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+          </div>
+        </div>
+        {showActions ? (
+          <UserMessageActions
+            text={text}
+            eventIndex={eventIndex}
+            onRetry={onRetry}
+            onEdit={onEdit ? () => setEditing(true) : undefined}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function autoSize(el: HTMLTextAreaElement) {
+  el.style.height = "auto";
+  el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+}
+
+function UserMessageActions({
+  text,
+  eventIndex,
+  onRetry,
+  onEdit,
+}: {
+  text: string;
+  eventIndex?: number;
+  onRetry?: (eventIndex: number, text: string) => void;
+  onEdit?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -105,6 +223,16 @@ function UserMessageActions({
       >
         {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
       </button>
+      {onEdit ? (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="rounded-md p-1 text-fg-3 hover:bg-bg-2 hover:text-fg-1"
+          title="Edit — wipes later messages and starts fresh"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      ) : null}
       {onRetry && eventIndex != null ? (
         <button
           type="button"
@@ -118,4 +246,3 @@ function UserMessageActions({
     </div>
   );
 }
-
