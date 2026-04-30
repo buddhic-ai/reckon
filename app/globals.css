@@ -1,26 +1,27 @@
 @import "tailwindcss";
 
 /* ────────────────────────────────────────────────────────────────────────────
-   B2B analytics tool — clean white, neutral grays, sky-blue accent.
-   The token names (--bg, --fg, --line, --accent…) stay; only the values move
-   back to the original palette.
+   B2B analytics tool — warm cream base, warm-neutral surfaces, indigo accent.
+   Token names (--bg, --fg, --line, --accent…) stay; values are unified into
+   one warm hue family so bubbles/sidebar/chips don't clash with --bg.
 ─────────────────────────────────────────────────────────────────────────── */
 :root {
-  /* Cool, calm slate neutrals — softer than pure gray, no warmth that veers
-     editorial. */
-  --bg: #ffffff;
-  --bg-1: #f8fafc;          /* slate-50  */
-  --bg-2: #f1f5f9;          /* slate-100 */
-  --bg-3: #e2e8f0;          /* slate-200 */
+  /* Warm-neutral scale tuned around the cream --bg. Every surface (sidebar,
+     bubble, chip, hover) sits in the same hue family so cards don't read as
+     "different palette" against the main pane. */
+  --bg: #fbfaf3;            /* cream off-white */
+  --bg-1: #f7f4e6;          /* sidebar / result bubble — barely-there cream */
+  --bg-2: #ece6cf;          /* chips, hover */
+  --bg-3: #d9d0b3;          /* disabled, sunken */
 
-  --line: #e2e8f0;          /* slate-200 */
-  --line-strong: #cbd5e1;   /* slate-300 */
+  --line: #ece5cd;          /* cream hairline */
+  --line-strong: #d4cba8;   /* cream strong hairline */
 
-  --fg: #0f172a;            /* slate-900 — calm near-black, not pure */
-  --fg-1: #334155;          /* slate-700 */
-  --fg-2: #64748b;          /* slate-500 */
-  --fg-3: #94a3b8;          /* slate-400 */
-  --fg-4: #cbd5e1;          /* slate-300 */
+  --fg: #1c1a16;            /* warm near-black, sits naturally on cream */
+  --fg-1: #3d3a33;          /* warm slate-700-equivalent */
+  --fg-2: #6b6760;          /* warm slate-500-equivalent */
+  --fg-3: #9c978d;          /* warm slate-400-equivalent */
+  --fg-4: #c9c4b8;          /* warm slate-300-equivalent */
 
   /* Accent — deep indigo. A jewel tone: calm, sophisticated, distinctive
      without being shouty. Used sparingly for active states and primary
@@ -210,3 +211,12 @@ html, body {
 }
 *:hover::-webkit-scrollbar-thumb { background: var(--fg-4); }
 *::-webkit-scrollbar-thumb:hover { background: var(--fg-3); }
+
+.sidebar-gradient {
+  background: linear-gradient(
+    to bottom,
+    var(--bg-1) 0%,
+    var(--bg-1) 60%,
+    color-mix(in oklab, var(--bg-1) 75%, var(--bg-2)) 100%
+  );
+}

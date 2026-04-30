@@ -161,6 +161,27 @@ export default function ChatPage({ params }: PageProps) {
     [runId]
   );
 
+  // Retry from a user message: server-side truncate + rerun. Local state is
+  // trimmed to match so the UI doesn't briefly show stale answers.
+  const onRetryUserMessage = useCallback(
+    async (eventIndex: number, text: string) => {
+      if (busy) return;
+      const res = await fetch(`/api/chats/${chatId}/truncate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventIndex }),
+      });
+      if (!res.ok) return;
+      setEvents((prev) => {
+        const next = prev.slice(0, eventIndex);
+        persistEvents(next);
+        return next;
+      });
+      void startTurn(text, []);
+    },
+    [busy, chatId, persistEvents, startTurn]
+  );
+
   if (notFound) {
     return (
       <AppShell>
@@ -201,6 +222,7 @@ export default function ChatPage({ params }: PageProps) {
           showTools
           pendingAnswers={answers}
           onAnswer={onAnswer}
+          onRetryUserMessage={onRetryUserMessage}
         />
         <Composer
           onSend={startTurn}

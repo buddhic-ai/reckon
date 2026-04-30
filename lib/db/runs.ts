@@ -142,3 +142,44 @@ export function getRunEvents(runId: string): RunEvent[] {
     .all(runId) as RunEventRow[];
   return rows.map((r) => JSON.parse(r.payload_json) as RunEvent);
 }
+
+/**
+ * Drop the run that owns chat-event #eventIndex, plus every later run in the
+ * chat. Used by the user-message "retry from here" affordance: replay should
+ * reflect the new branch only. Returns the number of runs deleted.
+ */
+export function truncateChatFromEventIndex(
+  chatId: string,
+  eventIndex: number
+): number {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT re.run_id, r.started_at
+       FROM run_events re
+       JOIN runs r ON r.id = re.run_id
+       WHERE r.chat_id = ?
+       ORDER BY r.started_at ASC, re.id ASC`
+    )
+    .all(chatId) as { run_id: string; started_at: string }[];
+  if (eventIndex < 0 || eventIndex >= rows.length) return 0;
+  const target = rows[eventIndex];
+  // Drop the target run plus every run in this chat that started at or after
+  // it. We delete the whole owning run rather than just events past N, so a
+  // mid-run retry still produces a clean branch.
+  const runIds = db
+    .prepare(`SELECT id FROM runs WHERE chat_id = ? AND started_at >= ?`)
+    .all(chatId, target.started_at) as { id: string }[];
+  const idSet = new Set<string>(runIds.map((r) => r.id));
+  idSet.add(target.run_id);
+  const evDel = db.prepare("DELETE FROM run_events WHERE run_id = ?");
+  const runDel = db.prepare("DELETE FROM runs WHERE id = ?");
+  const tx = db.transaction(() => {
+    for (const id of idSet) {
+      evDel.run(id);
+      runDel.run(id);
+    }
+  });
+  tx();
+  return idSet.size;
+}

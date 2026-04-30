@@ -89,9 +89,9 @@ export function Composer({ onSend, disabled, placeholder, hideAttach, draftKey }
   const canSend = !disabled && (text.trim().length > 0 || files.length > 0);
 
   return (
-    <div className="border-t border-line bg-bg px-4 py-3">
+    <div className="px-4 pb-4 pt-1">
       <div className="mx-auto max-w-3xl">
-        <div className="rounded-lg border border-line bg-bg shadow-[0_1px_2px_rgba(0,0,0,0.04)] focus-within:border-line-strong focus-within:shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-shadow">
+        <div className="rounded-2xl border border-line bg-bg shadow-[0_4px_16px_rgba(15,23,42,0.06),_0_1px_3px_rgba(15,23,42,0.04)] focus-within:border-line-strong focus-within:shadow-[0_6px_22px_rgba(15,23,42,0.08),_0_2px_4px_rgba(15,23,42,0.05)] transition-shadow">
           {files.length > 0 ? (
             <div className="flex flex-wrap gap-1.5 border-b border-line px-3 pt-2.5 pb-2">
               {files.map((f, i) => (

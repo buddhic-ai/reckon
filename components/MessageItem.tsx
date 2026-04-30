@@ -1,22 +1,40 @@
 "use client";
 
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { AlertOctagon } from "lucide-react";
+import { AlertOctagon, Check, Copy, RefreshCw } from "lucide-react";
 import type { RunEvent } from "@/lib/runtime/event-types";
 
 interface Props {
   event: RunEvent;
+  /** Index of this event in the chat thread's full event list. Required for
+   *  retry to identify the truncation point. */
+  eventIndex?: number;
+  /** Triggered when the user clicks "retry" on their own message. The handler
+   *  is responsible for truncating server state and re-running. */
+  onRetry?: (eventIndex: number, text: string) => void;
+  /** When true, copy/retry icons fade in on hover under user messages. */
+  showActions?: boolean;
 }
 
-export function MessageItem({ event }: Props) {
+export function MessageItem({ event, eventIndex, onRetry, showActions }: Props) {
   if (event.type === "user_message") {
     return (
-      <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-fg px-3.5 py-2 text-[14px] leading-relaxed text-bg">
-          <div className="markdown !text-bg [&_*]:!text-bg [&_a]:!text-bg [&_a]:!underline">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.text}</ReactMarkdown>
+      <div className="group/user flex justify-end">
+        <div className="flex max-w-[80%] flex-col items-end gap-1">
+          <div className="rounded-2xl rounded-br-sm bg-fg px-3.5 py-2 text-[14px] leading-relaxed text-bg">
+            <div className="markdown !text-bg [&_*]:!text-bg [&_a]:!text-bg [&_a]:!underline">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.text}</ReactMarkdown>
+            </div>
           </div>
+          {showActions ? (
+            <UserMessageActions
+              text={event.text}
+              eventIndex={eventIndex}
+              onRetry={onRetry}
+            />
+          ) : null}
         </div>
       </div>
     );
@@ -30,23 +48,12 @@ export function MessageItem({ event }: Props) {
   }
   if (event.type === "result") {
     if (!event.text || !event.text.trim()) return null;
-    const kpis = extractKpis(event.text);
     return (
-      <div className="border-l-2 border-accent pl-3.5">
-        {kpis.length > 0 ? (
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {kpis.map((k, i) => (
-              <span
-                key={i}
-                className="rounded-md bg-bg-2 px-2 py-0.5 font-mono text-[12px] tabular font-medium text-fg-1"
-              >
-                {k}
-              </span>
-            ))}
+      <div className="flex justify-start">
+        <div className="max-w-[88%] rounded-2xl rounded-bl-sm bg-bg-1 px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className="markdown text-fg">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.text}</ReactMarkdown>
           </div>
-        ) : null}
-        <div className="markdown text-fg">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.text}</ReactMarkdown>
         </div>
       </div>
     );
@@ -72,21 +79,43 @@ export function MessageItem({ event }: Props) {
   return null;
 }
 
-/** Surface big numeric findings as chips above the prose. */
-function extractKpis(text: string): string[] {
-  if (!text) return [];
-  const head = text.slice(0, 600);
-  const found = new Set<string>();
-  const patterns: RegExp[] = [
-    /\$[0-9][0-9.,]*/g,
-    /\b[0-9]+(?:\.[0-9]+)?%/g,
-    /\b[0-9]{4,}(?:\.[0-9]+)?\b/g,
-  ];
-  for (const re of patterns) {
-    for (const m of head.matchAll(re)) {
-      found.add(m[0]);
-      if (found.size >= 4) return [...found];
-    }
-  }
-  return [...found];
+function UserMessageActions({
+  text,
+  eventIndex,
+  onRetry,
+}: {
+  text: string;
+  eventIndex?: number;
+  onRetry?: (eventIndex: number, text: string) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex gap-1 opacity-0 transition-opacity group-hover/user:opacity-100 focus-within:opacity-100">
+      <button
+        type="button"
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(text);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+          } catch {}
+        }}
+        className="rounded-md p-1 text-fg-3 hover:bg-bg-2 hover:text-fg-1"
+        title={copied ? "Copied" : "Copy"}
+      >
+        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      </button>
+      {onRetry && eventIndex != null ? (
+        <button
+          type="button"
+          onClick={() => onRetry(eventIndex, text)}
+          className="rounded-md p-1 text-fg-3 hover:bg-bg-2 hover:text-fg-1"
+          title="Retry from here — wipes later messages"
+        >
+          <RefreshCw className="h-3 w-3" />
+        </button>
+      ) : null}
+    </div>
+  );
 }
+

@@ -74,7 +74,7 @@ export function Sidebar() {
   const onRuns = pathname === "/runs";
 
   return (
-    <aside className="hidden h-screen w-[260px] shrink-0 flex-col border-r border-line bg-bg-1 md:flex">
+    <aside className="sidebar-gradient hidden h-screen w-[260px] shrink-0 flex-col border-r border-line md:flex">
       <div className="flex shrink-0 items-center gap-2 px-4 py-4">
         {/* Logo inherits from `text-fg` so a single-color SVG (using
             `currentColor`) themes automatically. PNG / multi-color SVGs work

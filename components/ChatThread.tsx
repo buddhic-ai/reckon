@@ -14,6 +14,9 @@ interface Props {
   showTools?: boolean;
   pendingAnswers?: Record<string, string | undefined>;
   onAnswer?: (questionId: string, answer: string) => void;
+  /** When provided, user messages get hover copy/retry actions. The handler
+   *  is responsible for truncating server state and re-running. */
+  onRetryUserMessage?: (eventIndex: number, text: string) => void;
 }
 
 type ToolPair = {
@@ -30,7 +33,13 @@ type ToolPair = {
  *   - Errors render as red banners.
  *   - Questions, thoughts, results render through their own components.
  */
-export function ChatThread({ events, showTools = true, pendingAnswers, onAnswer }: Props) {
+export function ChatThread({
+  events,
+  showTools = true,
+  pendingAnswers,
+  onAnswer,
+  onRetryUserMessage,
+}: Props) {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
@@ -55,7 +64,7 @@ export function ChatThread({ events, showTools = true, pendingAnswers, onAnswer 
     <div
       ref={scrollerRef}
       onScroll={onScroll}
-      className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-4"
+      className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pt-4 pb-24"
     >
       {grouped.map((node, idx) => {
         if (node.kind === "tool_group") {
@@ -93,14 +102,22 @@ export function ChatThread({ events, showTools = true, pendingAnswers, onAnswer 
         ) {
           return null;
         }
-        return <MessageItem key={`m-${idx}`} event={event} />;
+        return (
+          <MessageItem
+            key={`m-${idx}`}
+            event={event}
+            eventIndex={node.eventIndex}
+            onRetry={onRetryUserMessage}
+            showActions={!!onRetryUserMessage}
+          />
+        );
       })}
     </div>
   );
 }
 
 type GroupedNode =
-  | { kind: "event"; event: RunEvent }
+  | { kind: "event"; event: RunEvent; eventIndex: number }
   | { kind: "tool_group"; pairs: ToolPair[] };
 
 /** Set of trimmed thought texts that match a `result` event in the same
@@ -123,7 +140,8 @@ function groupEvents(events: RunEvent[]): GroupedNode[] {
   const out: GroupedNode[] = [];
   type CallLoc = { groupIdx: number; pairIdx: number };
   const callLoc = new Map<string, CallLoc>();
-  for (const ev of events) {
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
     if (ev.type === "tool_call") {
       const last = out[out.length - 1];
       const pair: ToolPair = { call: ev };
@@ -165,7 +183,7 @@ function groupEvents(events: RunEvent[]): GroupedNode[] {
       continue;
     }
     // Other events break the visible group but keep the call→result map alive.
-    out.push({ kind: "event", event: ev });
+    out.push({ kind: "event", event: ev, eventIndex: i });
   }
   return out;
 }
