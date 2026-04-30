@@ -85,21 +85,25 @@ pnpm exec next start -H 127.0.0.1 -p 4000
 ## Deploying on a standalone server
 
 Reference deployment on a Linux box using a non-root service user, pnpm, and
-systemd. Adjust paths to taste.
+pm2. Adjust paths to taste.
 
 ### 1. Provision the host
 
 ```bash
 # As root or via sudo
-adduser --system --group --home /srv/reckon reckon
+adduser --system --group --home /srv/reckon --shell /bin/bash reckon
 apt-get install -y git curl build-essential
 # Node 20+ — install via nodesource, fnm, or asdf
-# pnpm
-corepack enable && corepack prepare pnpm@latest --activate
+# pnpm + pm2 (run as the reckon user once Node is on PATH)
+sudo -u reckon -H bash -lc '
+  corepack enable
+  corepack prepare pnpm@latest --activate
+  pnpm add -g pm2
+'
 # graphjin — install per https://graphjin.com (binary must be on PATH for the reckon user)
 ```
 
-### 2. Clone and build
+### 2. Clone, configure, build
 
 ```bash
 sudo -u reckon -H bash -lc '
@@ -113,39 +117,28 @@ sudo -u reckon -H bash -lc '
 '
 ```
 
-Reckon reads env from the process environment, not `.env.production`
-automatically — load it via the systemd unit (`EnvironmentFile=`) below.
+### 3. Start under pm2
 
-### 3. systemd unit
-
-`/etc/systemd/system/reckon.service`:
-
-```ini
-[Unit]
-Description=Reckon analytics agent
-After=network-online.target graphjin.service
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=reckon
-Group=reckon
-WorkingDirectory=/srv/reckon/app
-EnvironmentFile=/srv/reckon/app/.env.production
-ExecStart=/usr/bin/pnpm start
-Restart=on-failure
-RestartSec=5
-# Reckon binds to 127.0.0.1 — front it with a reverse proxy.
-
-[Install]
-WantedBy=multi-user.target
-```
+`scripts/deploy.sh` is the canonical entry point — it pulls, installs,
+builds, sources `.env.production`, and runs `pm2 startOrReload` against
+`ecosystem.config.cjs`. Use it for the first start and every redeploy.
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now reckon
-sudo journalctl -u reckon -f
+# One-time: wire pm2 into the system bootloader so processes survive reboot.
+sudo -u reckon -H bash -lc 'pm2 startup systemd -u reckon --hp /srv/reckon'
+# pm2 prints a `sudo env PATH=... pm2 startup ...` line — copy and run it as root.
+
+# Start (or redeploy):
+sudo -u reckon -H bash -lc 'cd /srv/reckon/app && scripts/deploy.sh'
+
+# Operate:
+sudo -u reckon -H pm2 status
+sudo -u reckon -H pm2 logs reckon
+sudo -u reckon -H pm2 restart reckon
 ```
+
+`pm2 save` is run automatically by the deploy script so the resurrected
+process list always reflects the latest config.
 
 ### 4. Reverse proxy (example: nginx)
 
@@ -180,14 +173,11 @@ app itself trusts every request.
 ### 5. Updating
 
 ```bash
-sudo -u reckon -H bash -lc '
-  cd /srv/reckon/app
-  git pull
-  pnpm install --frozen-lockfile
-  pnpm build
-'
-sudo systemctl restart reckon
+sudo -u reckon -H bash -lc 'cd /srv/reckon/app && scripts/deploy.sh'
 ```
+
+The script pulls, installs, builds, and reloads pm2 with the fresh env in a
+single shot.
 
 The SQLite database (`data/agent.db`) and the GraphJin knowledge pack
 (`lib/agent/knowledge/*.json`, regenerated each boot) are the only stateful
