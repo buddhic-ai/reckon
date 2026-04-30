@@ -5,11 +5,11 @@ import {
   createRun,
   finishRun,
   appendRunEvent,
-  getChatEvents,
 } from "@/lib/db/runs";
 import {
   createChat,
   getChat,
+  setChatSessionId,
   setChatTitleIfBlank,
   touchChat,
 } from "@/lib/db/chats";
@@ -22,7 +22,6 @@ import { formatSseFrame, SSE_HEADERS } from "@/lib/runtime/sse";
 import type { RunEvent } from "@/lib/runtime/event-types";
 import { runWorkflow, type AskUserFn } from "@/lib/agent/runner";
 import { AD_HOC_ANALYST_NAME } from "@/lib/agent/seed-adhoc";
-import { buildPriorHistoryBlock } from "@/lib/agent/chat-history";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,8 +32,9 @@ export const dynamic = "force-dynamic";
  *   - { chatId?, initialUserMessage }     — chat turn. If chatId is omitted a new
  *     chat is created on the fly. The Ad-hoc Analyst workflow backs the chat.
  *
- * For chat turns: prior 30 user/assistant turns are loaded from the chat's
- * past runs and spliced into the system prompt as conversation context.
+ * For chat turns: the SDK session_id is stored on the chat row on the first
+ * turn and passed back as `resume` on subsequent turns, so prompt-cache hits
+ * carry across the chat and full tool-call fidelity is preserved.
  */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
@@ -83,12 +83,16 @@ export async function POST(req: NextRequest) {
     trigger: "manual",
   });
 
-  // Build prior history block from this chat's earlier runs.
-  let priorHistory: string | undefined;
-  if (chatId) {
-    const past = getChatEvents(chatId);
-    priorHistory = buildPriorHistoryBlock(past) || undefined;
-  }
+  // Frozen chatId for use inside the stream closure (let widens back to
+  // string|undefined across closure boundaries).
+  const boundChatId: string | undefined = chatId;
+
+  // For chat turns, resume the SDK session so prompt-cache hits carry across
+  // turns. The session_id is captured on the first turn (see onSessionId
+  // below) and persisted on the chat row.
+  const resumeSessionId = boundChatId
+    ? getChat(boundChatId)?.session_id ?? undefined
+    : undefined;
 
   // Set title from the first user message if blank.
   if (chatId && initialUserMessage && initialUserMessage.trim()) {
@@ -159,7 +163,16 @@ export async function POST(req: NextRequest) {
         askUser,
         abortController,
         mode: "live",
-        priorHistory,
+        resumeSessionId,
+        onSessionId: boundChatId
+          ? (sid) => {
+              try {
+                setChatSessionId(boundChatId, sid);
+              } catch {
+                // best-effort; resume just won't work next turn
+              }
+            }
+          : undefined,
       })
         .then((result) => {
           finishRun({

@@ -67,6 +67,19 @@ export interface RunWorkflowOptions {
    * carry the last 30 turns of a chat into a fresh SDK invocation.
    */
   priorHistory?: string;
+  /**
+   * SDK session ID to resume. When set, the SDK loads the prior conversation
+   * from disk (`~/.claude/projects/<encoded-cwd>/<id>.jsonl`) so prompt-cache
+   * hits are preserved across turns. Caller should not also pass priorHistory
+   * — the resumed session already contains it.
+   */
+  resumeSessionId?: string;
+  /**
+   * Fires once with the SDK session_id as soon as the init message arrives
+   * (or on the first result message if init wasn't observed). Persist this
+   * on the chat row so subsequent turns can resume.
+   */
+  onSessionId?: (sessionId: string) => void;
 }
 
 /**
@@ -95,9 +108,19 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunWorkflow
   let needsInput = false;
 
   const baseSystemPrompt = buildSystemPrompt(workflow, mode);
-  const fullSystemPrompt = opts.priorHistory
-    ? `${baseSystemPrompt}\n\n--- EARLIER IN THIS CONVERSATION ---\n${opts.priorHistory}\n--- END HISTORY ---`
-    : baseSystemPrompt;
+  // When resuming, the SDK already has the prior conversation in the session
+  // file — splicing priorHistory would double it. Skip it on resume.
+  const fullSystemPrompt =
+    opts.priorHistory && !opts.resumeSessionId
+      ? `${baseSystemPrompt}\n\n--- EARLIER IN THIS CONVERSATION ---\n${opts.priorHistory}\n--- END HISTORY ---`
+      : baseSystemPrompt;
+
+  let sessionIdSeen: string | undefined;
+  const captureSessionId = (id: string | undefined) => {
+    if (!id || sessionIdSeen === id) return;
+    sessionIdSeen = id;
+    opts.onSessionId?.(id);
+  };
 
   try {
     for await (const message of query({
@@ -111,13 +134,18 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunWorkflow
         mcpServers: { ui: uiServer, workflow_builder: workflowBuilderServer },
         canUseTool,
         abortController,
+        resume: opts.resumeSessionId,
       },
     })) {
       const events = sdkMessageToEvents(message);
       for (const ev of events) emit(ev);
 
       const m = message as Record<string, unknown>;
+      if (m.type === "system" && m.subtype === "init") {
+        captureSessionId(m.session_id as string | undefined);
+      }
       if (m.type === "result") {
+        captureSessionId(m.session_id as string | undefined);
         const sub = m.subtype;
         finalText = (m.result as string) ?? "";
         if (typeof m.total_cost_usd === "number") totalCostUsd = m.total_cost_usd;

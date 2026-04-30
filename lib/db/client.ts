@@ -20,8 +20,18 @@ export function getDb(): Db {
   db.pragma("foreign_keys = ON");
   const ddl = fs.readFileSync(path.join(process.cwd(), "lib/db/schema.sql"), "utf8");
   db.exec(ddl);
+  migrate(db);
   globalThis[KEY] = db;
   return db;
+}
+
+function migrate(db: Db): void {
+  const cols = db
+    .prepare("PRAGMA table_info(chats)")
+    .all() as { name: string }[];
+  if (!cols.some((c) => c.name === "session_id")) {
+    db.exec("ALTER TABLE chats ADD COLUMN session_id TEXT");
+  }
 }
 
 export function closeDb(): void {

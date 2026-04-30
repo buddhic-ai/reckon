@@ -12,6 +12,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uniq_workflows_name ON workflows(name);
 CREATE TABLE IF NOT EXISTS chats (
   id         TEXT PRIMARY KEY,
   title      TEXT,
+  session_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

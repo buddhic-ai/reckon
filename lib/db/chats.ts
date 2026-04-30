@@ -3,6 +3,7 @@ import { getDb } from "./client";
 export interface ChatRow {
   id: string;
   title: string | null;
+  session_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -13,7 +14,12 @@ export function createChat(id: string): ChatRow {
   db.prepare(
     `INSERT INTO chats (id, title, created_at, updated_at) VALUES (?, NULL, ?, ?)`
   ).run(id, now, now);
-  return { id, title: null, created_at: now, updated_at: now };
+  return { id, title: null, session_id: null, created_at: now, updated_at: now };
+}
+
+export function setChatSessionId(id: string, sessionId: string): void {
+  const db = getDb();
+  db.prepare(`UPDATE chats SET session_id = ? WHERE id = ?`).run(sessionId, id);
 }
 
 export function getChat(id: string): ChatRow | null {
