@@ -6,6 +6,57 @@ import remarkGfm from "remark-gfm";
 import { AlertOctagon, Check, Copy, Pencil, RefreshCw } from "lucide-react";
 import type { RunEvent } from "@/lib/runtime/event-types";
 
+const FILE_PATH_RE = /data\/(?:reports|uploads)\/[A-Za-z0-9._\-/]+\.[A-Za-z0-9]+/g;
+
+// Remark plugin: turn bare data/reports/... and data/uploads/... mentions in
+// assistant prose into links to /api/files/<path>. This is a render-time
+// display transform (analogous to URL autolinking), not logic extraction —
+// no behavior is driven by what we match. Skips text inside code/link nodes
+// so existing markdown links and code blocks pass through untouched.
+function autolinkFilePaths() {
+  return (tree: unknown) => walkNode(tree, null);
+}
+
+type MdNode = { type: string; value?: string; url?: string; children?: MdNode[] };
+
+function walkNode(node: unknown, parent: MdNode | null): void {
+  if (!node || typeof node !== "object") return;
+  const n = node as MdNode;
+  if (n.type === "code" || n.type === "inlineCode" || n.type === "link") return;
+  if (n.type === "text" && typeof n.value === "string" && parent?.children) {
+    const value = n.value;
+    FILE_PATH_RE.lastIndex = 0;
+    const matches = [...value.matchAll(FILE_PATH_RE)];
+    if (matches.length === 0) return;
+    const replacement: MdNode[] = [];
+    let cursor = 0;
+    for (const m of matches) {
+      const start = m.index ?? 0;
+      const end = start + m[0].length;
+      if (start > cursor) {
+        replacement.push({ type: "text", value: value.slice(cursor, start) });
+      }
+      replacement.push({
+        type: "link",
+        url: `/api/files/${m[0]}`,
+        children: [{ type: "text", value: m[0] }],
+      });
+      cursor = end;
+    }
+    if (cursor < value.length) {
+      replacement.push({ type: "text", value: value.slice(cursor) });
+    }
+    const idx = parent.children.indexOf(n);
+    if (idx !== -1) parent.children.splice(idx, 1, ...replacement);
+    return;
+  }
+  if (Array.isArray(n.children)) {
+    for (const child of n.children.slice()) walkNode(child, n);
+  }
+}
+
+const REMARK_PLUGINS = [remarkGfm, autolinkFilePaths];
+
 interface Props {
   event: RunEvent;
   /** Index of this event in the chat thread's full event list. Required for
@@ -44,7 +95,7 @@ export function MessageItem({
   if (event.type === "thought") {
     return (
       <div className="markdown text-fg-1">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.text}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{event.text}</ReactMarkdown>
       </div>
     );
   }
@@ -54,7 +105,7 @@ export function MessageItem({
       <div className="flex justify-start">
         <div className="max-w-[88%] rounded-2xl rounded-bl-sm bg-bg-1 px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="markdown text-fg">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.text}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{event.text}</ReactMarkdown>
           </div>
         </div>
       </div>
@@ -174,7 +225,7 @@ function UserMessage({
       <div className="flex max-w-[80%] flex-col items-end gap-1">
         <div className="rounded-2xl rounded-br-sm bg-fg px-3.5 py-2 text-[14px] leading-relaxed text-bg">
           <div className="markdown !text-bg [&_*]:!text-bg [&_a]:!text-bg [&_a]:!underline">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown>
           </div>
         </div>
         {showActions ? (
