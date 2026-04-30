@@ -132,7 +132,7 @@ export async function ensureAnalystWorkflow(baseUrl: string): Promise<string> {
   return created.workflow.id;
 }
 
-const SMOKE_OVERLAY = `You are answering a SINGLE business question against the AdventureWorks database.
+const SMOKE_OVERLAY = `You are answering a SINGLE business question against the connected database.
 
 Rules:
 - Make at most 3 graphjin cli calls. Prefer one bulk query over many small ones.

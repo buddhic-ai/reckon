@@ -138,13 +138,13 @@ async function main() {
   loadEnv();
 
   const baseUrl = process.env.AGENT_BASE_URL ?? "http://127.0.0.1:3000";
-  const dbUrl = process.env.ADVENTUREWORKS_DB_URL ?? "";
+  const dbUrl = process.env.TEST_DB_URL ?? "";
   if (!dbUrl) {
-    console.error("ADVENTUREWORKS_DB_URL is not set in .env.local");
+    console.error("TEST_DB_URL is not set in .env.local");
     process.exit(2);
   }
 
-  const suite = arg("suite") || "adventureworks";
+  const suite = arg("suite") || "smoke";
   const filter = arg("filter");
   const bail = flag("bail");
   const skipAgent = flag("no-agent");

@@ -14,7 +14,7 @@ import type { Workflow } from "@/lib/workflow/schema";
 export const AD_HOC_ANALYST_NAME = "Ad-hoc Analyst";
 
 const SYSTEM_PROMPT_OVERLAY = `You are the user's analytics co-pilot. The user can ask anything
-about the AdventureWorks database, attach files for inspection, or ask
+about the connected database, attach files for inspection, or ask
 you to save a recurring task as a saved workflow.
 
 Behaviors:

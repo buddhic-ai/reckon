@@ -39,7 +39,7 @@ fill in the values.
 | `DEFAULT_TIMEZONE` | no | `UTC` | Default tz for cron triggers when a workflow doesn't set one. |
 | `NEXT_PUBLIC_BRAND_NAME` | no | `Reckon` | Inlined at build time — rebuild after changing. |
 | `NEXT_PUBLIC_BRAND_LOGO` | no | `/brand/logo.svg` | Path under `/public`. Inlined at build time. |
-| `ADVENTUREWORKS_DB_URL` | no | — | Direct Postgres URL used **only** by `pnpm smoke` for ground-truth verification. Not read by the app. |
+| `TEST_DB_URL` | no | — | Direct Postgres URL used **only** by `pnpm smoke` for ground-truth verification. Not read by the app. |
 
 `NEXT_PUBLIC_*` values are baked into the client bundle at `next build` time;
 changing them requires a rebuild, not just a restart.
@@ -198,8 +198,8 @@ artifacts. Back up `data/` if you care about workflow + run history.
 After the server is up:
 
 ```bash
-ADVENTUREWORKS_DB_URL=postgres://... AGENT_BASE_URL=http://127.0.0.1:3000 pnpm smoke
+TEST_DB_URL=postgres://... AGENT_BASE_URL=http://127.0.0.1:3000 pnpm smoke
 ```
 
 `pnpm smoke:sql` skips the agent calls and only verifies the ground-truth
-SQL queries against `ADVENTUREWORKS_DB_URL`.
+SQL queries against `TEST_DB_URL`.
