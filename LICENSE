@@ -1,0 +1,53 @@
+Reckon — Proprietary License
+
+Copyright (c) 2026 [Copyright Holder]. All rights reserved.
+
+This software, including its source code, design assets, configuration,
+documentation, and any associated materials (collectively, "the Software"),
+is the confidential and proprietary property of the Copyright Holder
+("Licensor"). All right, title, and interest in and to the Software,
+including all intellectual property rights therein, remain with Licensor.
+
+No part of the Software may be copied, reproduced, distributed, published,
+modified, displayed, performed, transmitted, leased, sublicensed, or used
+to develop derivative works, in whole or in part, by any means or in any
+form, without Licensor's prior written permission or a separate written
+license agreement signed by Licensor.
+
+Authorised commercial use, evaluation, or distribution rights — if any —
+are governed exclusively by such separate written agreement(s) between
+Licensor and the licensee. Nothing in this notice grants any such rights
+by implication, estoppel, or otherwise.
+
+──────────────────────────────────────────────────────────────────────────
+Third-Party Software
+──────────────────────────────────────────────────────────────────────────
+
+The Software depends on third-party packages, each governed by its own
+license. Notably:
+
+  @anthropic-ai/claude-agent-sdk
+    Proprietary — © Anthropic PBC, all rights reserved. Use is subject to
+    Anthropic's Legal Agreements:
+      https://code.claude.com/docs/en/legal-and-compliance
+    The Reckon Software interfaces with this SDK at runtime; the SDK
+    itself is not redistributed as source by this project. Any commercial
+    deployment of Reckon must hold a valid Anthropic API account and
+    comply with Anthropic's commercial terms.
+
+Other dependencies (Next.js, React, recharts, better-sqlite3, node-cron,
+zod, ulid, react-markdown, remark-gfm, lucide-react, tailwindcss, etc.)
+are governed by their respective open-source licenses (predominantly MIT
+and Apache-2.0). See `node_modules/<package>/LICENSE` for each.
+
+──────────────────────────────────────────────────────────────────────────
+No Warranty
+──────────────────────────────────────────────────────────────────────────
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, AND
+TITLE. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM,
+DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR
+OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR
+THE USE OR OTHER DEALINGS IN THE SOFTWARE.
