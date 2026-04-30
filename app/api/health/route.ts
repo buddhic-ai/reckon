@@ -1,4 +1,5 @@
 import { knowledgeStatus } from "@/lib/agent/knowledge-loader";
+import { getGraphjinProbeState } from "@/lib/agent/graphjin-probe";
 import { getDb } from "@/lib/db/client";
 import { activeRunCount } from "@/lib/runtime/run-registry";
 import { activeJobIds } from "@/lib/scheduler/cron";
@@ -26,6 +27,15 @@ export async function GET() {
   } catch (e) {
     ok = false;
     checks.db = { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  const probe = getGraphjinProbeState();
+  if (!probe) {
+    ok = false;
+    checks.graphjin = { ok: false, pending: true };
+  } else {
+    checks.graphjin = probe;
+    if (!probe.ok) ok = false;
   }
 
   checks.runs = { active: activeRunCount() };

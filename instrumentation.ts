@@ -11,12 +11,26 @@ export async function register() {
   // Skip in the edge runtime; this hook also fires there.
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
+  let bootPrefetchOk = false;
   try {
     const { prefetchKnowledge } = await import("@/lib/agent/knowledge-loader");
-    await prefetchKnowledge();
+    const result = await prefetchKnowledge();
+    bootPrefetchOk = result.ok;
   } catch (err) {
     console.error(
       `[instrumentation] knowledge prefetch threw: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+
+  try {
+    const { setProbeBaseline, startGraphjinProbe } = await import(
+      "@/lib/agent/graphjin-probe"
+    );
+    setProbeBaseline(bootPrefetchOk);
+    startGraphjinProbe();
+  } catch (err) {
+    console.error(
+      `[instrumentation] graphjin probe init threw: ${err instanceof Error ? err.message : String(err)}`
     );
   }
 

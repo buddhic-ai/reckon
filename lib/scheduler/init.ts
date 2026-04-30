@@ -12,7 +12,6 @@ declare global {
  */
 export function initScheduler(): void {
   if (globalThis.__agentSchedulerInited) return;
-  globalThis.__agentSchedulerInited = true;
   try {
     const all = listWorkflows();
     let n = 0;
@@ -22,6 +21,7 @@ export function initScheduler(): void {
         n++;
       }
     }
+    globalThis.__agentSchedulerInited = true;
     console.error(`[scheduler] init: ${n} cron job(s) registered (of ${all.length} total)`);
   } catch (err) {
     console.error(
