@@ -1,20 +1,19 @@
-import { createRequire } from "node:module";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 
-const projectRequire = createRequire(import.meta.url);
-
-// pnpm symlinks the per-platform native variant into the SDK's *own*
-// node_modules, not the project root. Anchor module resolution at the SDK's
-// entry point so `require.resolve("@anthropic-ai/claude-agent-sdk-<variant>")`
-// can follow that symlink. Resolving from the project root returns
-// MODULE_NOT_FOUND under pnpm's isolated layout.
+// Locate the Claude Code native binary inside pnpm's per-platform native
+// package. We can't use require.resolve here: this file runs inside Next.js's
+// bundled server output, where Webpack/Turbopack rewrites require.resolve
+// calls to return numeric module IDs instead of file paths.
+//
+// Instead we read pnpm's `.pnpm` store layout directly:
+//   node_modules/.pnpm/@anthropic-ai+claude-agent-sdk-<variant>@<v>/node_modules/@anthropic-ai/claude-agent-sdk-<variant>/claude
 //
 // On Linux glibc hosts the SDK's own runtime resolver picks the musl variant
-// (which isn't symlinked into the SDK's node_modules on glibc), and crashes
-// with "Claude Code native binary not found". We detect libc ourselves and
-// pin the matching prebuilt — falling back to undefined so the SDK does its
-// default on platforms we don't need to override (macOS, Windows).
+// (which isn't fully populated on glibc), and crashes with "Claude Code
+// native binary not found". We detect libc ourselves and pin the matching
+// prebuilt — returning undefined on platforms we don't need to override
+// (macOS, Windows) so the SDK keeps its default behaviour.
 function detectLinuxLibc(): "glibc" | "musl" {
   try {
     const report = process.report?.getReport?.() as
@@ -43,6 +42,24 @@ function variantPackageName(): string | undefined {
   return undefined;
 }
 
+function findInPnpmStore(projectRoot: string, variant: string): string | undefined {
+  const pnpmDir = join(projectRoot, "node_modules", ".pnpm");
+  let entries: string[];
+  try {
+    entries = readdirSync(pnpmDir);
+  } catch {
+    return undefined;
+  }
+  // pnpm encodes "@scope/name" as "@scope+name" in the .pnpm directory.
+  const prefix = variant.replace("/", "+") + "@";
+  for (const entry of entries) {
+    if (!entry.startsWith(prefix)) continue;
+    const candidate = join(pnpmDir, entry, "node_modules", variant, "claude");
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 let cached: string | undefined;
 let resolved = false;
 
@@ -51,19 +68,21 @@ export function resolveClaudeBinaryPath(): string | undefined {
   resolved = true;
   const pkg = variantPackageName();
   if (!pkg) return (cached = undefined);
-  try {
-    const sdkEntry = projectRequire.resolve("@anthropic-ai/claude-agent-sdk");
-    const sdkRequire = createRequire(sdkEntry);
-    const pkgJsonPath = sdkRequire.resolve(`${pkg}/package.json`);
-    const candidate = join(dirname(pkgJsonPath), "claude");
-    if (existsSync(candidate)) {
-      cached = candidate;
-      console.log(`[claude-binary] pinned to ${candidate}`);
-    } else {
-      console.warn(`[claude-binary] ${pkg} resolved but binary missing at ${candidate}`);
-    }
-  } catch (err) {
-    console.warn(`[claude-binary] could not resolve ${pkg}:`, (err as Error).message);
+
+  // pm2 launches the app with cwd set to the project root (ecosystem.config.cjs),
+  // and `next dev` does the same. Use cwd as the project root anchor.
+  const projectRoot = process.cwd();
+
+  // Try the hoisted/top-level path first (works under npm/yarn or pnpm with
+  // shamefully-hoist), then fall back to walking pnpm's .pnpm store.
+  const hoisted = join(projectRoot, "node_modules", pkg, "claude");
+  const candidate = existsSync(hoisted) ? hoisted : findInPnpmStore(projectRoot, pkg);
+
+  if (candidate) {
+    cached = candidate;
+    console.log(`[claude-binary] pinned to ${candidate}`);
+  } else {
+    console.warn(`[claude-binary] could not locate ${pkg} binary under ${projectRoot}/node_modules`);
   }
   return cached;
 }
