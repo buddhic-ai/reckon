@@ -2,14 +2,18 @@ import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-const require = createRequire(import.meta.url);
+const projectRequire = createRequire(import.meta.url);
 
-// On Linux glibc systems pnpm sometimes installs both the gnu and musl native
-// variants of the SDK (the musl package doesn't declare `libc: ["musl"]` in
-// its own package.json, so pnpm can't filter it out at install time). The
-// SDK's runtime resolver then picks musl, which crashes on glibc with
-// "Claude Code native binary not found". We detect libc ourselves and return
-// the matching prebuilt — falling back to undefined so the SDK does its
+// pnpm symlinks the per-platform native variant into the SDK's *own*
+// node_modules, not the project root. Anchor module resolution at the SDK's
+// entry point so `require.resolve("@anthropic-ai/claude-agent-sdk-<variant>")`
+// can follow that symlink. Resolving from the project root returns
+// MODULE_NOT_FOUND under pnpm's isolated layout.
+//
+// On Linux glibc hosts the SDK's own runtime resolver picks the musl variant
+// (which isn't symlinked into the SDK's node_modules on glibc), and crashes
+// with "Claude Code native binary not found". We detect libc ourselves and
+// pin the matching prebuilt — falling back to undefined so the SDK does its
 // default on platforms we don't need to override (macOS, Windows).
 function detectLinuxLibc(): "glibc" | "musl" {
   try {
@@ -48,14 +52,18 @@ export function resolveClaudeBinaryPath(): string | undefined {
   const pkg = variantPackageName();
   if (!pkg) return (cached = undefined);
   try {
-    const pkgJsonPath = require.resolve(`${pkg}/package.json`);
+    const sdkEntry = projectRequire.resolve("@anthropic-ai/claude-agent-sdk");
+    const sdkRequire = createRequire(sdkEntry);
+    const pkgJsonPath = sdkRequire.resolve(`${pkg}/package.json`);
     const candidate = join(dirname(pkgJsonPath), "claude");
     if (existsSync(candidate)) {
       cached = candidate;
       console.log(`[claude-binary] pinned to ${candidate}`);
+    } else {
+      console.warn(`[claude-binary] ${pkg} resolved but binary missing at ${candidate}`);
     }
-  } catch {
-    // package not installed for this platform — let the SDK try its default
+  } catch (err) {
+    console.warn(`[claude-binary] could not resolve ${pkg}:`, (err as Error).message);
   }
   return cached;
 }
