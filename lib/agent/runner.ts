@@ -12,6 +12,7 @@ import {
 } from "./tool-defaults";
 import { buildPresentServer } from "./tools/present";
 import { workflowBuilderServer } from "./tools/createWorkflow";
+import { resolveClaudeBinaryPath } from "./claude-binary";
 
 export interface AskUserQuestionInput {
   question: string;
@@ -123,6 +124,7 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunWorkflow
   };
 
   try {
+    const claudeBinPath = resolveClaudeBinaryPath();
     for await (const message of query({
       prompt: userMessages as AsyncIterable<never>,
       options: {
@@ -135,6 +137,7 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunWorkflow
         canUseTool,
         abortController,
         resume: opts.resumeSessionId,
+        ...(claudeBinPath ? { pathToClaudeCodeExecutable: claudeBinPath } : {}),
       },
     })) {
       const events = sdkMessageToEvents(message);

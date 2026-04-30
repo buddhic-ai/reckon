@@ -5,6 +5,7 @@ import type { SDKUserMessageLike } from "@/lib/runtime/run-registry";
 import { META_SYSTEM_PROMPT } from "./meta-prompt";
 import { META_ALLOWED_TOOLS, FIXED_DENY, matches } from "./tool-defaults";
 import { workflowBuilderServer } from "./tools/createWorkflow";
+import { resolveClaudeBinaryPath } from "./claude-binary";
 import type { AskUserFn } from "./runner";
 
 export interface RunMetaAgentOptions {
@@ -40,6 +41,7 @@ export async function runMetaAgent(opts: RunMetaAgentOptions): Promise<RunMetaAg
   let totalCostUsd: number | undefined;
 
   try {
+    const claudeBinPath = resolveClaudeBinaryPath();
     for await (const message of query({
       prompt: userMessages as AsyncIterable<never>,
       options: {
@@ -51,6 +53,7 @@ export async function runMetaAgent(opts: RunMetaAgentOptions): Promise<RunMetaAg
         mcpServers: { workflow_builder: workflowBuilderServer },
         canUseTool,
         abortController,
+        ...(claudeBinPath ? { pathToClaudeCodeExecutable: claudeBinPath } : {}),
       },
     })) {
       const events = sdkMessageToEvents(message);
