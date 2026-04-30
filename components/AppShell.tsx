@@ -1,3 +1,4 @@
+import { GraphjinStatusBanner } from "./GraphjinStatusBanner";
 import { Sidebar } from "./Sidebar";
 
 /**
@@ -7,9 +8,12 @@ import { Sidebar } from "./Sidebar";
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen w-full overflow-hidden">
-      <Sidebar />
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</main>
+    <div className="flex h-screen w-full flex-col overflow-hidden">
+      <GraphjinStatusBanner />
+      <div className="flex min-h-0 w-full flex-1 overflow-hidden">
+        <Sidebar />
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</main>
+      </div>
     </div>
   );
 }

@@ -35,7 +35,9 @@ function slot() {
 }
 
 async function probeOnce(): Promise<ProbeState> {
-  const url = `${env.graphjinBaseUrl()}/health`;
+  // GraphJin's /health endpoint returns HTTP 500 with body "All's Well" even
+  // when functionally healthy. /healthz is the correct liveness endpoint.
+  const url = `${env.graphjinBaseUrl()}/healthz`;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
   const start = Date.now();
