@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Plus, MessageSquare, GitBranch, History } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Plus, MessageSquare, GitBranch, History, Trash2 } from "lucide-react";
 import { brand } from "@/lib/brand";
 import type { ChatRow } from "@/lib/db/chats";
 import type { Workflow as WorkflowDef } from "@/lib/workflow/schema";
@@ -21,6 +21,7 @@ const LS_WORKFLOWS = "agent.sidebar.workflows";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   // Empty initial state — server and first client render match. localStorage
   // is read in the effect below to avoid a hydration mismatch.
   const [chats, setChats] = useState<ChatRow[]>([]);
@@ -73,6 +74,41 @@ export function Sidebar() {
   const onHome = pathname === "/";
   const onRuns = pathname === "/runs";
 
+  const deleteChat = useCallback(
+    async (chat: ChatRow) => {
+      const label = chat.title ?? "Untitled chat";
+      if (!confirm(`Delete chat "${label}"? This removes its run history too.`)) return;
+      const res = await fetch(`/api/chats/${chat.id}`, { method: "DELETE" });
+      if (!res.ok) return;
+      setChats((prev) => {
+        const next = prev.filter((c) => c.id !== chat.id);
+        try {
+          localStorage.setItem(LS_CHATS, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+      if (activeChatId === chat.id) router.push("/");
+    },
+    [activeChatId, router]
+  );
+
+  const deleteWorkflow = useCallback(
+    async (wf: WorkflowSummary) => {
+      if (!confirm(`Delete workflow "${wf.name}"?`)) return;
+      const res = await fetch(`/api/workflows/${wf.id}`, { method: "DELETE" });
+      if (!res.ok) return;
+      setWorkflows((prev) => {
+        const next = prev.filter((w) => w.id !== wf.id);
+        try {
+          localStorage.setItem(LS_WORKFLOWS, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+      if (activeWorkflowId === wf.id) router.push("/");
+    },
+    [activeWorkflowId, router]
+  );
+
   return (
     <aside className="sidebar-gradient hidden h-screen w-[260px] shrink-0 flex-col border-r border-line md:flex">
       <div className="flex shrink-0 items-center gap-2 px-4 py-4">
@@ -112,18 +148,15 @@ export function Sidebar() {
             <Empty>No chats yet.</Empty>
           ) : (
             chats.map((c) => (
-              <Link
+              <SidebarRow
                 key={c.id}
                 href={`/c/${c.id}`}
-                className={`mx-2 truncate rounded-md px-2 py-1.5 text-[12.5px] transition-colors ${
-                  activeChatId === c.id
-                    ? "bg-bg-2 text-fg"
-                    : "text-fg-2 hover:bg-bg-2 hover:text-fg-1"
-                }`}
+                active={activeChatId === c.id}
                 title={c.title ?? "Untitled chat"}
-              >
-                {c.title ?? "Untitled chat"}
-              </Link>
+                label={c.title ?? "Untitled chat"}
+                onDelete={() => deleteChat(c)}
+                deleteLabel="Delete chat"
+              />
             ))
           )}
         </div>
@@ -137,24 +170,23 @@ export function Sidebar() {
             </Empty>
           ) : (
             workflows.map((w) => (
-              <Link
+              <SidebarRow
                 key={w.id}
                 href={`/w/${w.id}`}
-                className={`group mx-2 flex items-center gap-2 truncate rounded-md px-2 py-1.5 text-[12.5px] transition-colors ${
-                  activeWorkflowId === w.id
-                    ? "bg-bg-2 text-fg"
-                    : "text-fg-2 hover:bg-bg-2 hover:text-fg-1"
-                }`}
+                active={activeWorkflowId === w.id}
                 title={w.description}
-              >
-                <span className="flex-1 truncate">{w.name}</span>
-                {w.hasCron ? (
-                  <span
-                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
-                    title="Scheduled"
-                  />
-                ) : null}
-              </Link>
+                label={w.name}
+                onDelete={() => deleteWorkflow(w)}
+                deleteLabel="Delete workflow"
+                trailing={
+                  w.hasCron ? (
+                    <span
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+                      title="Scheduled"
+                    />
+                  ) : null
+                }
+              />
             ))
           )}
         </div>
@@ -203,6 +235,54 @@ function Section({
 function Empty({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-4 px-2 py-1 text-[11.5px] text-fg-3">{children}</div>
+  );
+}
+
+function SidebarRow({
+  href,
+  active,
+  title,
+  label,
+  onDelete,
+  deleteLabel,
+  trailing,
+}: {
+  href: string;
+  active: boolean;
+  title?: string;
+  label: string;
+  onDelete: () => void;
+  deleteLabel: string;
+  trailing?: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`group relative mx-2 flex items-center gap-2 rounded-md text-[12.5px] transition-colors ${
+        active ? "bg-bg-2 text-fg" : "text-fg-2 hover:bg-bg-2 hover:text-fg-1"
+      }`}
+    >
+      <Link
+        href={href}
+        title={title}
+        className="flex min-w-0 flex-1 items-center gap-2 truncate px-2 py-1.5"
+      >
+        <span className="flex-1 truncate">{label}</span>
+        {trailing}
+      </Link>
+      <button
+        type="button"
+        aria-label={deleteLabel}
+        title={deleteLabel}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onDelete();
+        }}
+        className="mr-1 hidden h-6 w-6 shrink-0 items-center justify-center rounded text-fg-3 hover:bg-bg-3 hover:text-bad group-hover:flex focus-visible:flex"
+      >
+        <Trash2 className="h-3 w-3" />
+      </button>
+    </div>
   );
 }
 

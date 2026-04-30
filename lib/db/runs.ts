@@ -74,6 +74,14 @@ export function getRun(id: string): RunRow | null {
   return (db.prepare("SELECT * FROM runs WHERE id = ?").get(id) as RunRow | undefined) ?? null;
 }
 
+export function deleteRun(id: string): void {
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare("DELETE FROM run_events WHERE run_id = ?").run(id);
+    db.prepare("DELETE FROM runs WHERE id = ?").run(id);
+  })();
+}
+
 export interface ListRunsOpts {
   workflowId?: string;
   chatId?: string;

@@ -1,7 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Paperclip, X } from "lucide-react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
+import { ArrowUp, Paperclip, Square, X } from "lucide-react";
+
+export interface ComposerHandle {
+  /** Replace the composer's draft with `text` and focus the textarea. */
+  setText: (text: string) => void;
+}
 
 interface Props {
   onSend: (text: string, files: File[]) => void;
@@ -9,6 +20,12 @@ interface Props {
   placeholder?: string;
   hideAttach?: boolean;
   draftKey?: string;
+  /**
+   * When set and `disabled` is true (i.e. an agent is currently streaming),
+   * the Send button is replaced by a Stop button that calls this. Used by the
+   * chat page to abort an in-flight run.
+   */
+  onStop?: () => void;
 }
 
 const MAX_FILES = 5;
@@ -19,19 +36,40 @@ const MAX_SIZE = 10 * 1024 * 1024;
  * actions. Attach + send live inside the shell so the whole input feels like
  * a single object, not three buttons in a row.
  */
-export function Composer({ onSend, disabled, placeholder, hideAttach, draftKey }: Props) {
+export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
+  { onSend, disabled, placeholder, hideAttach, draftKey, onStop },
+  ref
+) {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const hydrated = useRef(false);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      setText: (t: string) => {
+        setText(t);
+        // Defer focus until after the controlled value lands in the DOM.
+        requestAnimationFrame(() => {
+          const el = textareaRef.current;
+          if (!el) return;
+          el.focus();
+          // Place caret at the end so the user can keep typing or just hit Enter.
+          el.setSelectionRange(t.length, t.length);
+        });
+      },
+    }),
+    []
+  );
 
   useEffect(() => {
     if (!draftKey || hydrated.current) return;
     hydrated.current = true;
     try {
       const saved = localStorage.getItem(draftKey);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (saved) setText(saved);
     } catch {}
   }, [draftKey]);
@@ -118,6 +156,7 @@ export function Composer({ onSend, disabled, placeholder, hideAttach, draftKey }
           ) : null}
 
           <textarea
+            ref={textareaRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={2}
@@ -161,17 +200,29 @@ export function Composer({ onSend, disabled, placeholder, hideAttach, draftKey }
               )}
             </div>
 
-            <button
-              onClick={submit}
-              disabled={!canSend}
-              className="group inline-flex h-7 items-center gap-1 rounded-md bg-fg px-2.5 text-[12px] font-medium text-bg transition-all hover:bg-fg-1 disabled:bg-bg-3 disabled:text-fg-3"
-            >
-              Send
-              <ArrowUp className="h-3 w-3 transition-transform group-hover:-translate-y-0.5" />
-            </button>
+            {disabled && onStop ? (
+              <button
+                onClick={onStop}
+                type="button"
+                className="inline-flex h-7 items-center gap-1 rounded-md bg-bad px-2.5 text-[12px] font-medium text-white transition-all hover:opacity-90"
+                title="Stop the agent"
+              >
+                <Square className="h-3 w-3 fill-current" />
+                Stop
+              </button>
+            ) : (
+              <button
+                onClick={submit}
+                disabled={!canSend}
+                className="group inline-flex h-7 items-center gap-1 rounded-md bg-fg px-2.5 text-[12px] font-medium text-bg transition-all hover:bg-fg-1 disabled:bg-bg-3 disabled:text-fg-3"
+              >
+                Send
+                <ArrowUp className="h-3 w-3 transition-transform group-hover:-translate-y-0.5" />
+              </button>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
-}
+});

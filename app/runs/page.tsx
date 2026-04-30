@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Calendar, User, Repeat } from "lucide-react";
+import { Calendar, User, Repeat, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import type { RunRow } from "@/lib/db/runs";
 
@@ -15,6 +15,14 @@ export default function RunsPage() {
       const data = await res.json();
       setRuns(data.runs ?? []);
     })();
+  }, []);
+
+  const deleteRun = useCallback(async (run: RunRow) => {
+    const when = new Date(run.started_at).toLocaleString();
+    if (!confirm(`Delete this run from ${when}?`)) return;
+    const res = await fetch(`/api/runs/${run.id}`, { method: "DELETE" });
+    if (!res.ok) return;
+    setRuns((prev) => (prev ? prev.filter((r) => r.id !== run.id) : prev));
   }, []);
 
   return (
@@ -42,11 +50,12 @@ export default function RunsPage() {
                       <Th>Status</Th>
                       <Th align="right">Cost</Th>
                       <Th align="right">Tokens</Th>
+                      <Th align="right"> </Th>
                     </tr>
                   </thead>
                   <tbody>
                     {runs.map((r) => (
-                      <tr key={r.id} className="border-t border-line">
+                      <tr key={r.id} className="group border-t border-line">
                         <td className="px-3 py-1.5">
                           <Link href={`/r/${r.id}`} className="text-fg-1 hover:text-accent hover:underline">
                             {new Date(r.started_at).toLocaleString()}
@@ -72,6 +81,18 @@ export default function RunsPage() {
                         </td>
                         <td className="px-3 py-1.5 text-right font-mono tabular text-fg-2">
                           {r.total_tokens ?? "—"}
+                        </td>
+                        <td className="px-3 py-1.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => deleteRun(r)}
+                            disabled={r.status === "running"}
+                            aria-label="Delete run"
+                            title={r.status === "running" ? "Cannot delete while running" : "Delete run"}
+                            className="invisible inline-flex h-6 w-6 items-center justify-center rounded text-fg-3 hover:bg-bg-2 hover:text-bad disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-fg-3 group-hover:visible"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
                         </td>
                       </tr>
                     ))}

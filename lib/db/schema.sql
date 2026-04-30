@@ -46,3 +46,11 @@ CREATE TABLE IF NOT EXISTS run_events (
   FOREIGN KEY (run_id) REFERENCES runs(id)
 );
 CREATE INDEX IF NOT EXISTS idx_run_events_run ON run_events(run_id, id);
+
+-- Cached home-screen suggestion chips. One row per knowledge-pack fingerprint
+-- so the chips automatically regenerate when the connected DB schema changes.
+CREATE TABLE IF NOT EXISTS home_suggestions (
+  fingerprint  TEXT PRIMARY KEY,
+  json         TEXT NOT NULL,
+  generated_at TEXT NOT NULL
+);

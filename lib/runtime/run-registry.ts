@@ -22,6 +22,12 @@ export interface RunContext {
   resolveAnswer: (questionId: string, answer: string) => boolean;
   /** Push an operator guidance message into the running agent's prompt stream. */
   sendUserMessage: (text: string) => boolean;
+  /**
+   * Abort the SDK invocation backing this run. Called from /api/run/:id/abort
+   * when the user clicks Stop in the UI. The runner observes the
+   * AbortController and finishes with status="aborted".
+   */
+  abort: (reason?: string) => boolean;
   /** Tear down — rejects pending questions, closes the message queue, removes the run. */
   close: (reason?: string) => void;
 }
@@ -49,7 +55,8 @@ const runs: Map<string, RunEntry> =
 export function registerRun(
   runId: string,
   emit: (event: RunEvent) => void,
-  messageQueue: AsyncMessageQueue<SDKUserMessageLike>
+  messageQueue: AsyncMessageQueue<SDKUserMessageLike>,
+  abortController: AbortController
 ): RunContext {
   const pending = new Map<string, PendingQuestion>();
   const unclaimed = new Map<string, string>();
@@ -85,6 +92,15 @@ export function registerRun(
         message: { role: "user", content: text },
         parent_tool_use_id: null,
       });
+      return true;
+    },
+    abort(reason) {
+      if (abortController.signal.aborted) return false;
+      emit({ type: "status", text: reason ?? "Stopped by user." });
+      abortController.abort();
+      // Closing the queue makes the SDK's prompt stream complete cleanly so
+      // the for-await loop exits even if the agent was waiting on input.
+      messageQueue.close();
       return true;
     },
     close(reason) {

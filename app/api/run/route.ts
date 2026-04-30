@@ -128,8 +128,8 @@ export async function POST(req: NextRequest) {
         safeEnqueue(formatSseFrame(event));
       };
 
-      const ctx = registerRun(runId, emit, messageQueue);
       const abortController = new AbortController();
+      const ctx = registerRun(runId, emit, messageQueue, abortController);
 
       const askUser: AskUserFn = async (q) => {
         const questionId = ulid();

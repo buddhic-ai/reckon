@@ -51,4 +51,19 @@ export async function register() {
       `[instrumentation] scheduler init threw: ${err instanceof Error ? err.message : String(err)}`
     );
   }
+
+  // Fire-and-forget: regenerate home-screen suggestion chips if the connected
+  // DB's fingerprint isn't already cached. Doesn't block boot — the home page
+  // falls back to the most recent cached chips (or a generic set) until this
+  // lands.
+  if (bootPrefetchOk) {
+    try {
+      const { ensureSuggestionsAtBoot } = await import("@/lib/home/ensure-suggestions");
+      ensureSuggestionsAtBoot();
+    } catch (err) {
+      console.error(
+        `[instrumentation] home suggestions threw: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
 }

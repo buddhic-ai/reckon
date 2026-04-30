@@ -25,6 +25,10 @@ export default function ChatPage({ params }: PageProps) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [notFound, setNotFound] = useState(false);
   const seedFiredRef = useRef(false);
+  // Tracks the in-flight SSE reader so the Stop button can both signal the
+  // backend to abort and tear down the local stream immediately.
+  const activeReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+  const activeRunIdRef = useRef<string | null>(null);
 
   const persistEvents = useCallback(
     (next: RunEvent[]) => {
@@ -93,45 +97,77 @@ export default function ChatPage({ params }: PageProps) {
           return;
         }
         const reader = res.body.getReader();
+        activeReaderRef.current = reader;
         const dec = new TextDecoder();
         let buf = "";
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buf += dec.decode(value, { stream: true });
-          let idx;
-          while ((idx = buf.indexOf("\n\n")) !== -1) {
-            const frame = buf.slice(0, idx);
-            buf = buf.slice(idx + 2);
-            const data = frame
-              .split("\n")
-              .filter((l) => l.startsWith("data: "))
-              .map((l) => l.slice(6))
-              .join("\n");
-            if (!data) continue;
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed?.type === "_hello" && typeof parsed.runId === "string") {
-                setRunId(parsed.runId);
-                continue;
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            let idx;
+            while ((idx = buf.indexOf("\n\n")) !== -1) {
+              const frame = buf.slice(0, idx);
+              buf = buf.slice(idx + 2);
+              const data = frame
+                .split("\n")
+                .filter((l) => l.startsWith("data: "))
+                .map((l) => l.slice(6))
+                .join("\n");
+              if (!data) continue;
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed?.type === "_hello" && typeof parsed.runId === "string") {
+                  setRunId(parsed.runId);
+                  activeRunIdRef.current = parsed.runId;
+                  continue;
+                }
+                if (parsed?.type === "done") {
+                  setBusy(false);
+                  setRunId(null);
+                  activeRunIdRef.current = null;
+                  continue;
+                }
+                appendEvent(parsed as RunEvent);
+              } catch {
+                /* ignore */
               }
-              if (parsed?.type === "done") {
-                setBusy(false);
-                setRunId(null);
-                continue;
-              }
-              appendEvent(parsed as RunEvent);
-            } catch {
-              /* ignore */
             }
           }
+        } catch {
+          // Reader was cancelled (Stop button) or stream errored — fall through
+          // to cleanup. The 'done' event already flipped busy off if it landed
+          // in time; if not, the finally block below handles it.
         }
       } finally {
+        activeReaderRef.current = null;
+        activeRunIdRef.current = null;
         setBusy(false);
+        setRunId(null);
       }
     },
     [busy, chatId, appendEvent]
   );
+
+  const stopRun = useCallback(async () => {
+    const id = activeRunIdRef.current;
+    const reader = activeReaderRef.current;
+    // Best-effort: signal the backend to abort the SDK invocation. We don't
+    // wait for it before tearing down the local stream — the user wants the
+    // UI to feel responsive.
+    if (id) {
+      void fetch(`/api/run/${id}/abort`, { method: "POST" }).catch(() => {});
+    }
+    if (reader) {
+      try {
+        await reader.cancel();
+      } catch {}
+    }
+    activeReaderRef.current = null;
+    activeRunIdRef.current = null;
+    setBusy(false);
+    setRunId(null);
+  }, []);
 
   // Seed-on-mount: if home page stashed the first message, fire it now.
   useEffect(() => {
@@ -227,6 +263,7 @@ export default function ChatPage({ params }: PageProps) {
         <Composer
           onSend={startTurn}
           disabled={busy}
+          onStop={stopRun}
           placeholder={busy ? "Working…" : "Reply to the agent…"}
           draftKey={`chat:${chatId}:draft`}
         />
