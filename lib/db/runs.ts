@@ -82,6 +82,29 @@ export function deleteRun(id: string): void {
   })();
 }
 
+/**
+ * Most recent run status per workflow, excluding chat turns. The Sidebar
+ * uses this to colour each workflow's status dot (running=amber pulse,
+ * completed=green, error/aborted=red, needs_input=amber static, missing=
+ * grey "never run"). Only one row per workflow id.
+ */
+export function getLastWorkflowRunStatuses(): Map<string, RunStatus> {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT workflow_id, status FROM (
+         SELECT workflow_id, status,
+                ROW_NUMBER() OVER (PARTITION BY workflow_id ORDER BY started_at DESC) AS rn
+         FROM runs
+         WHERE chat_id IS NULL AND workflow_id IS NOT NULL
+       ) WHERE rn = 1`
+    )
+    .all() as { workflow_id: string; status: RunStatus }[];
+  const out = new Map<string, RunStatus>();
+  for (const r of rows) out.set(r.workflow_id, r.status);
+  return out;
+}
+
 export interface ListRunsOpts {
   workflowId?: string;
   chatId?: string;

@@ -9,6 +9,7 @@ import { Composer } from "@/components/Composer";
 import { uploadFiles, joinMessageWithAttachments } from "@/components/upload-helper";
 import type { RunEvent } from "@/lib/runtime/event-types";
 import type { ChatRow } from "@/lib/db/chats";
+import type { RunRow } from "@/lib/db/runs";
 
 interface PageProps {
   params: Promise<{ chatId: string }>;
@@ -24,6 +25,10 @@ export default function ChatPage({ params }: PageProps) {
   const [runId, setRunId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [notFound, setNotFound] = useState(false);
+  // The id of a run for this chat that's still `running` server-side after
+  // the user navigated back to this page. Drives the polling loop and the
+  // Stop button when no local SSE stream is active.
+  const [activeServerRunId, setActiveServerRunId] = useState<string | null>(null);
   const seedFiredRef = useRef(false);
   // Tracks the in-flight SSE reader so the Stop button can both signal the
   // backend to abort and tear down the local stream immediately.
@@ -58,6 +63,8 @@ export default function ChatPage({ params }: PageProps) {
   }, [chatId]);
 
   // Then load authoritative chat state from server and replace the cache.
+  // Also note any run that's still `running` server-side — the polling effect
+  // below will drive live updates for it.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -67,15 +74,59 @@ export default function ChatPage({ params }: PageProps) {
         setNotFound(true);
         return;
       }
-      const data = (await res.json()) as { chat: ChatRow; events: RunEvent[] };
+      const data = (await res.json()) as {
+        chat: ChatRow;
+        runs: RunRow[];
+        events: RunEvent[];
+      };
       setChat(data.chat);
       setEvents(data.events);
       persistEvents(data.events);
+      const running = data.runs.find((r) => r.status === "running");
+      setActiveServerRunId(running?.id ?? null);
     })();
     return () => {
       cancelled = true;
     };
   }, [chatId, persistEvents]);
+
+  // Live-update polling: while a server-side run is still running for this
+  // chat AND the user isn't currently driving a local SSE stream, re-fetch
+  // events every 2s so the UI catches up to events emitted while the user
+  // was on another page. Replacing `events` with the server's authoritative
+  // list is safe because run_events is append-only and ChatThread renders
+  // with stable index keys, so React diffs cleanly without flicker.
+  useEffect(() => {
+    if (!activeServerRunId || busy) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = async () => {
+      if (cancelled) return;
+      try {
+        const res = await fetch(`/api/chats/${chatId}`);
+        if (cancelled || !res.ok) return;
+        const data = (await res.json()) as {
+          chat: ChatRow;
+          runs: RunRow[];
+          events: RunEvent[];
+        };
+        setChat(data.chat);
+        setEvents(data.events);
+        persistEvents(data.events);
+        const running = data.runs.find((r) => r.status === "running");
+        setActiveServerRunId(running?.id ?? null);
+        if (running && !cancelled) timer = setTimeout(tick, 2000);
+      } catch {
+        // network blip; try again next tick
+        if (!cancelled) timer = setTimeout(tick, 2000);
+      }
+    };
+    timer = setTimeout(tick, 2000);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [chatId, activeServerRunId, busy, persistEvents]);
 
   // Kick off SSE for a new turn — POST /api/run with chatId + message, stream
   // events back into local state.
@@ -100,6 +151,10 @@ export default function ChatPage({ params }: PageProps) {
         activeReaderRef.current = reader;
         const dec = new TextDecoder();
         let buf = "";
+        // Tool-use ids for in-flight workflow_builder tool calls. When the
+        // matching tool_result lands with ok=true, the workflow row exists
+        // in the DB and the sidebar should refresh.
+        const pendingWorkflowToolUseIds = new Set<string>();
         try {
           while (true) {
             const { value, done } = await reader.read();
@@ -125,8 +180,24 @@ export default function ChatPage({ params }: PageProps) {
                 if (parsed?.type === "done") {
                   setBusy(false);
                   setRunId(null);
+                  setActiveServerRunId(null);
                   activeRunIdRef.current = null;
                   continue;
+                }
+                if (
+                  parsed?.type === "tool_call" &&
+                  typeof parsed.tool === "string" &&
+                  parsed.tool.startsWith("mcp__workflow_builder__")
+                ) {
+                  pendingWorkflowToolUseIds.add(String(parsed.toolUseId ?? ""));
+                } else if (
+                  parsed?.type === "tool_result" &&
+                  pendingWorkflowToolUseIds.has(String(parsed.toolUseId ?? ""))
+                ) {
+                  pendingWorkflowToolUseIds.delete(String(parsed.toolUseId));
+                  if (parsed.ok) {
+                    window.dispatchEvent(new Event("reckon:workflows-changed"));
+                  }
                 }
                 appendEvent(parsed as RunEvent);
               } catch {
@@ -150,11 +221,12 @@ export default function ChatPage({ params }: PageProps) {
   );
 
   const stopRun = useCallback(async () => {
-    const id = activeRunIdRef.current;
+    // Two paths land here: the user clicked Stop while their own SSE stream
+    // is live (activeRunIdRef is set), OR they navigated back to a chat with
+    // a server-side run still going (activeServerRunId is set). Try the
+    // local id first, fall back to the polled one.
+    const id = activeRunIdRef.current ?? activeServerRunId;
     const reader = activeReaderRef.current;
-    // Best-effort: signal the backend to abort the SDK invocation. We don't
-    // wait for it before tearing down the local stream — the user wants the
-    // UI to feel responsive.
     if (id) {
       void fetch(`/api/run/${id}/abort`, { method: "POST" }).catch(() => {});
     }
@@ -167,7 +239,8 @@ export default function ChatPage({ params }: PageProps) {
     activeRunIdRef.current = null;
     setBusy(false);
     setRunId(null);
-  }, []);
+    setActiveServerRunId(null);
+  }, [activeServerRunId]);
 
   // Seed-on-mount: if home page stashed the first message, fire it now.
   useEffect(() => {
@@ -233,6 +306,12 @@ export default function ChatPage({ params }: PageProps) {
     );
   }
 
+  // True whenever an agent is working — either driven by this client's SSE
+  // stream (busy) or running server-side because the user navigated away
+  // and came back (activeServerRunId). Drives the Stop button and the
+  // composer's disabled state.
+  const streaming = busy || activeServerRunId !== null;
+
   return (
     <AppShell>
       <div className="flex min-h-0 flex-1 flex-col">
@@ -251,7 +330,7 @@ export default function ChatPage({ params }: PageProps) {
               <p className="truncate text-[11px] text-fg-3">Ad-hoc analyst</p>
             </div>
           </div>
-          <BusyDot busy={busy} />
+          <BusyDot busy={streaming} />
         </header>
         <ChatThread
           events={events}
@@ -262,9 +341,9 @@ export default function ChatPage({ params }: PageProps) {
         />
         <Composer
           onSend={startTurn}
-          disabled={busy}
+          disabled={streaming}
           onStop={stopRun}
-          placeholder={busy ? "Working…" : "Reply to the agent…"}
+          placeholder={streaming ? "Working…" : "Reply to the agent…"}
           draftKey={`chat:${chatId}:draft`}
         />
       </div>

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { ulid } from "ulid";
 import { listWorkflows, insertWorkflow } from "@/lib/db/workflows";
+import { getLastWorkflowRunStatuses } from "@/lib/db/runs";
 import { Workflow } from "@/lib/workflow/schema";
 import { scheduleWorkflow } from "@/lib/scheduler/cron";
 
@@ -8,6 +9,7 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const workflows = listWorkflows();
+  const lastStatuses = getLastWorkflowRunStatuses();
   return Response.json({
     workflows: workflows.map((w) => ({
       id: w.id,
@@ -18,6 +20,7 @@ export async function GET() {
       hasCron: !!w.triggers?.cron,
       cron: w.triggers?.cron,
       timezone: w.triggers?.timezone,
+      lastRunStatus: lastStatuses.get(w.id) ?? null,
     })),
   });
 }

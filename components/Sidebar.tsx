@@ -7,6 +7,7 @@ import { Plus, MessageSquare, GitBranch, History, Trash2 } from "lucide-react";
 import { brand } from "@/lib/brand";
 import type { ChatRow } from "@/lib/db/chats";
 import type { Workflow as WorkflowDef } from "@/lib/workflow/schema";
+import type { RunStatus } from "@/lib/db/runs";
 
 interface WorkflowSummary {
   id: string;
@@ -14,6 +15,7 @@ interface WorkflowSummary {
   description: string;
   updated_at?: string;
   hasCron?: boolean;
+  lastRunStatus?: RunStatus | null;
 }
 
 const LS_CHATS = "agent.sidebar.chats";
@@ -38,36 +40,61 @@ export function Sidebar() {
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
+  const refresh = useCallback(async () => {
+    try {
+      const [chatRes, wfRes] = await Promise.all([
+        fetch("/api/chats").then((r) => r.json()),
+        fetch("/api/workflows").then((r) => r.json()),
+      ]);
+      const cs = (chatRes.chats as ChatRow[]) ?? [];
+      const ws = ((wfRes.workflows as (WorkflowDef & { hasCron?: boolean; lastRunStatus?: RunStatus | null })[]) ?? []).map((w) => ({
+        id: w.id,
+        name: w.name,
+        description: w.description,
+        updated_at: w.updatedAt,
+        hasCron: w.hasCron,
+        lastRunStatus: w.lastRunStatus ?? null,
+      }));
+      const visibleWorkflows = ws.filter((w) => w.name !== "Ad-hoc Analyst");
+      setChats(cs);
+      setWorkflows(visibleWorkflows);
       try {
-        const [chatRes, wfRes] = await Promise.all([
-          fetch("/api/chats").then((r) => r.json()),
-          fetch("/api/workflows").then((r) => r.json()),
-        ]);
-        if (cancelled) return;
-        const cs = (chatRes.chats as ChatRow[]) ?? [];
-        const ws = ((wfRes.workflows as (WorkflowDef & { hasCron?: boolean })[]) ?? []).map((w) => ({
-          id: w.id,
-          name: w.name,
-          description: w.description,
-          updated_at: w.updatedAt,
-          hasCron: w.hasCron,
-        }));
-        const visibleWorkflows = ws.filter((w) => w.name !== "Ad-hoc Analyst");
-        setChats(cs);
-        setWorkflows(visibleWorkflows);
-        try {
-          localStorage.setItem(LS_CHATS, JSON.stringify(cs));
-          localStorage.setItem(LS_WORKFLOWS, JSON.stringify(visibleWorkflows));
-        } catch {}
+        localStorage.setItem(LS_CHATS, JSON.stringify(cs));
+        localStorage.setItem(LS_WORKFLOWS, JSON.stringify(visibleWorkflows));
       } catch {}
-    })();
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    // setState inside `refresh` happens post-await, not synchronously in the
+    // effect body — but the linter can't see through the indirection.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refresh();
+  }, [pathname, refresh]);
+
+  // Refresh on demand when other parts of the app mutate the relevant tables.
+  // The chat page dispatches `reckon:workflows-changed` after the agent's
+  // create_workflow tool returns ok=true, and `reckon:chats-changed` when a
+  // new chat is created or its title is set on the first turn.
+  useEffect(() => {
+    const onChange = () => void refresh();
+    window.addEventListener("reckon:workflows-changed", onChange);
+    window.addEventListener("reckon:chats-changed", onChange);
     return () => {
-      cancelled = true;
+      window.removeEventListener("reckon:workflows-changed", onChange);
+      window.removeEventListener("reckon:chats-changed", onChange);
     };
-  }, [pathname]);
+  }, [refresh]);
+
+  // Slow background poll so cron-driven runs (which have no client-side
+  // trigger to dispatch an event) eventually surface as live-now indicators,
+  // and so the indicator clears once the run finishes. 5s feels live without
+  // hammering — equivalent data lives in /api/workflows so the SQL is
+  // already a small JOIN on the runs table.
+  useEffect(() => {
+    const id = setInterval(() => void refresh(), 5000);
+    return () => clearInterval(id);
+  }, [refresh]);
 
   const activeChatId = pathname?.startsWith("/c/") ? pathname.slice(3) : null;
   const activeWorkflowId = pathname?.startsWith("/w/") ? pathname.slice(3) : null;
@@ -178,14 +205,7 @@ export function Sidebar() {
                 label={w.name}
                 onDelete={() => deleteWorkflow(w)}
                 deleteLabel="Delete workflow"
-                trailing={
-                  w.hasCron ? (
-                    <span
-                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
-                      title="Scheduled"
-                    />
-                  ) : null
-                }
+                trailing={<RunStatusDot status={w.lastRunStatus ?? null} />}
               />
             ))
           )}
@@ -235,6 +255,38 @@ function Section({
 function Empty({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-4 px-2 py-1 text-[11.5px] text-fg-3">{children}</div>
+  );
+}
+
+/**
+ * Status dot for a workflow row in the sidebar:
+ *   - amber pulsing  → a run is in flight right now
+ *   - amber static   → last run paused awaiting input (cron + askUser)
+ *   - green          → last run completed successfully
+ *   - red            → last run errored or was aborted
+ *   - grey           → workflow has never been run
+ */
+function RunStatusDot({ status }: { status: RunStatus | null }) {
+  let cls = "bg-fg-4";
+  let title = "Never run";
+  if (status === "running") {
+    cls = "bg-warn pulse-soft";
+    title = "Running now";
+  } else if (status === "needs_input") {
+    cls = "bg-warn";
+    title = "Paused — awaiting input";
+  } else if (status === "completed") {
+    cls = "bg-good";
+    title = "Last run succeeded";
+  } else if (status === "error" || status === "aborted") {
+    cls = "bg-bad";
+    title = status === "aborted" ? "Last run was stopped" : "Last run errored";
+  }
+  return (
+    <span
+      className={`h-1.5 w-1.5 shrink-0 rounded-full ${cls}`}
+      title={title}
+    />
   );
 }
 
