@@ -24,7 +24,9 @@ interface MentionState {
   query: string;
 }
 
-const MENTION_LIMIT = 6;
+// Max rows shown in the picker. The list scrolls internally if the user
+// narrows past this with a query.
+const MENTION_LIMIT = 5;
 
 /**
  * Walk backwards from the caret looking for an `@` that opens a mention. The
@@ -112,6 +114,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         .slice(0, MENTION_LIMIT)
     : [];
   const mentionOpen = mention !== null && filteredSkills.length > 0;
+  const highlightedSkill = mentionOpen ? filteredSkills[mentionIdx] : null;
 
   useImperativeHandle(
     ref,
@@ -233,36 +236,78 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     <div className="px-4 pb-4 pt-1">
       <div className="relative mx-auto max-w-3xl">
         {mentionOpen ? (
+          // Master/detail picker: skills list on the left, full description of
+          // the highlighted skill on the right. Same pattern as Raycast and
+          // macOS Spotlight — long descriptions live in the detail pane and
+          // scroll independently, so nothing ever overflows the viewport
+          // regardless of screen width. Detail follows mentionIdx so keyboard
+          // and mouse navigation produce the same preview.
           <div className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-lg border border-line bg-bg shadow-[0_8px_24px_rgba(15,23,42,0.08),_0_2px_4px_rgba(15,23,42,0.05)]">
-            <div className="border-b border-line bg-bg-1 px-3 py-1 text-[10.5px] font-medium uppercase tracking-wider text-fg-3">
-              Skills
+            <div className="flex items-center justify-between border-b border-line bg-bg-1 px-3 py-1 text-[10.5px] font-medium uppercase tracking-wider text-fg-3">
+              <span>Skills</span>
+              <span className="font-mono text-[10px] tabular text-fg-4">
+                {filteredSkills.length}
+              </span>
             </div>
-            <ul role="listbox" className="max-h-72 overflow-y-auto">
-              {filteredSkills.map((s, i) => (
-                <li
-                  key={s.name}
-                  role="option"
-                  aria-selected={i === mentionIdx}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    insertMention(s);
-                  }}
-                  onMouseEnter={() => setMentionIdx(i)}
-                  className={`cursor-pointer px-3 py-1.5 ${
-                    i === mentionIdx ? "bg-bg-2" : "hover:bg-bg-1"
-                  }`}
-                >
-                  <div className="font-mono text-[12px] font-medium text-fg">
-                    @{s.name}
-                  </div>
-                  {s.description ? (
-                    <div className="truncate text-[11.5px] text-fg-3">
-                      {s.description}
+            <div className="flex">
+              <ul
+                role="listbox"
+                className="max-h-[14rem] w-60 shrink-0 overflow-y-auto border-r border-line bg-bg-1/40 py-1"
+              >
+                {filteredSkills.map((s, i) => (
+                  <li
+                    key={s.name}
+                    role="option"
+                    aria-selected={i === mentionIdx}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      insertMention(s);
+                    }}
+                    onMouseEnter={() => setMentionIdx(i)}
+                    className={`cursor-pointer border-l-2 px-3 py-1.5 transition-colors ${
+                      i === mentionIdx
+                        ? "border-fg bg-bg text-fg"
+                        : "border-transparent text-fg-1 hover:bg-bg/60"
+                    }`}
+                  >
+                    <div className="font-mono text-[12px] font-medium">
+                      @{s.name}
                     </div>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
+                    {s.description ? (
+                      <div className="truncate text-[11px] text-fg-3">
+                        {s.description}
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+              <div
+                aria-live="polite"
+                className="flex max-h-[14rem] min-w-0 flex-1 flex-col overflow-y-auto px-4 py-3"
+              >
+                {highlightedSkill ? (
+                  <>
+                    <div className="mb-2 flex items-baseline justify-between gap-3 border-b border-line pb-2">
+                      <span className="font-mono text-[12.5px] font-medium text-fg">
+                        @{highlightedSkill.name}
+                      </span>
+                      <span className="text-[10px] uppercase tracking-wider text-fg-4">
+                        ↵ to insert
+                      </span>
+                    </div>
+                    {highlightedSkill.description ? (
+                      <p className="whitespace-pre-line text-[12px] leading-relaxed text-fg-2">
+                        {highlightedSkill.description}
+                      </p>
+                    ) : (
+                      <p className="text-[11.5px] italic text-fg-4">
+                        No description provided for this skill.
+                      </p>
+                    )}
+                  </>
+                ) : null}
+              </div>
+            </div>
           </div>
         ) : null}
         <div className="rounded-2xl border border-line bg-bg shadow-[0_4px_16px_rgba(15,23,42,0.06),_0_1px_3px_rgba(15,23,42,0.04)] focus-within:border-line-strong focus-within:shadow-[0_6px_22px_rgba(15,23,42,0.08),_0_2px_4px_rgba(15,23,42,0.05)] transition-shadow">
