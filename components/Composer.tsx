@@ -14,6 +14,41 @@ export interface ComposerHandle {
   setText: (text: string) => void;
 }
 
+interface SkillRow {
+  name: string;
+  description: string;
+}
+
+interface MentionState {
+  start: number;
+  query: string;
+}
+
+const MENTION_LIMIT = 6;
+
+/**
+ * Walk backwards from the caret looking for an `@` that opens a mention. The
+ * trigger is only active when `@` follows whitespace or string start, and the
+ * range between `@` and the caret contains no whitespace.
+ */
+function detectMention(value: string, caret: number): MentionState | null {
+  let i = caret - 1;
+  while (i >= 0) {
+    const ch = value[i];
+    if (ch === "@") {
+      const prev = i > 0 ? value[i - 1] : "";
+      if (i === 0 || /\s/.test(prev)) {
+        const query = value.slice(i + 1, caret);
+        if (!/\s/.test(query)) return { start: i, query };
+      }
+      return null;
+    }
+    if (/\s/.test(ch)) return null;
+    i--;
+  }
+  return null;
+}
+
 interface Props {
   onSend: (text: string, files: File[]) => void;
   disabled?: boolean;
@@ -44,9 +79,39 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [skills, setSkills] = useState<SkillRow[]>([]);
+  const [mention, setMention] = useState<MentionState | null>(null);
+  const [mentionIdx, setMentionIdx] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const hydrated = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/skills")
+      .then((r) => (r.ok ? r.json() : { skills: [] }))
+      .then((d: { skills?: SkillRow[] }) => {
+        if (!cancelled) setSkills(d.skills ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredSkills = mention
+    ? skills
+        .filter((s) => {
+          const q = mention.query.toLowerCase();
+          if (!q) return true;
+          return (
+            s.name.toLowerCase().includes(q) ||
+            s.description.toLowerCase().includes(q)
+          );
+        })
+        .slice(0, MENTION_LIMIT)
+    : [];
+  const mentionOpen = mention !== null && filteredSkills.length > 0;
 
   useImperativeHandle(
     ref,
@@ -94,6 +159,31 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`;
   }, [text]);
 
+  function insertMention(skill: SkillRow) {
+    if (!mention) return;
+    const before = text.slice(0, mention.start);
+    const after = text.slice(mention.start + 1 + mention.query.length);
+    const insert = `@${skill.name} `;
+    const next = before + insert + after;
+    setText(next);
+    setMention(null);
+    setMentionIdx(0);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      const caret = before.length + insert.length;
+      el.focus();
+      el.setSelectionRange(caret, caret);
+    });
+  }
+
+  function refreshMentionFromEl(el: HTMLTextAreaElement) {
+    const caret = el.selectionStart ?? el.value.length;
+    const next = detectMention(el.value, caret);
+    setMention(next);
+    if (!next) setMentionIdx(0);
+  }
+
   function submit() {
     const t = text.trim();
     if ((!t && files.length === 0) || disabled) return;
@@ -137,7 +227,40 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
 
   return (
     <div className="px-4 pb-4 pt-1">
-      <div className="mx-auto max-w-3xl">
+      <div className="relative mx-auto max-w-3xl">
+        {mentionOpen ? (
+          <div className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-lg border border-line bg-bg shadow-[0_8px_24px_rgba(15,23,42,0.08),_0_2px_4px_rgba(15,23,42,0.05)]">
+            <div className="border-b border-line bg-bg-1 px-3 py-1 text-[10.5px] font-medium uppercase tracking-wider text-fg-3">
+              Skills
+            </div>
+            <ul role="listbox" className="max-h-72 overflow-y-auto">
+              {filteredSkills.map((s, i) => (
+                <li
+                  key={s.name}
+                  role="option"
+                  aria-selected={i === mentionIdx}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    insertMention(s);
+                  }}
+                  onMouseEnter={() => setMentionIdx(i)}
+                  className={`cursor-pointer px-3 py-1.5 ${
+                    i === mentionIdx ? "bg-bg-2" : "hover:bg-bg-1"
+                  }`}
+                >
+                  <div className="font-mono text-[12px] font-medium text-fg">
+                    @{s.name}
+                  </div>
+                  {s.description ? (
+                    <div className="truncate text-[11.5px] text-fg-3">
+                      {s.description}
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <div className="rounded-2xl border border-line bg-bg shadow-[0_4px_16px_rgba(15,23,42,0.06),_0_1px_3px_rgba(15,23,42,0.04)] focus-within:border-line-strong focus-within:shadow-[0_6px_22px_rgba(15,23,42,0.08),_0_2px_4px_rgba(15,23,42,0.05)] transition-shadow">
           {files.length > 0 ? (
             <div className="flex flex-wrap gap-1.5 border-b border-line px-3 pt-2.5 pb-2">
@@ -167,13 +290,46 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           <textarea
             ref={textareaRef}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              refreshMentionFromEl(e.currentTarget);
+            }}
+            onSelect={(e) => refreshMentionFromEl(e.currentTarget)}
+            onBlur={() => {
+              // Defer so click-on-option (onMouseDown) lands first.
+              setTimeout(() => setMention(null), 100);
+            }}
             rows={2}
             disabled={disabled}
             placeholder={placeholder ?? "Send a message…"}
             style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
             className="composer-input px-3 pt-2.5 overflow-y-auto"
             onKeyDown={(e) => {
+              if (mentionOpen) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setMentionIdx((i) => (i + 1) % filteredSkills.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setMentionIdx(
+                    (i) =>
+                      (i - 1 + filteredSkills.length) % filteredSkills.length
+                  );
+                  return;
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault();
+                  insertMention(filteredSkills[mentionIdx]);
+                  return;
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setMention(null);
+                  return;
+                }
+              }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 submit();
