@@ -2,11 +2,14 @@
 
 Chat-first analytics agent platform. A Next.js app that runs a Claude Agent
 SDK runtime over your data via GraphJin, with a workflow builder for saving
-repeatable analyses and a scheduler for running them on cron.
+repeatable analyses, an Agent Skills builder for reusable capabilities, and a
+scheduler for running workflows on cron.
 
 - `/builder` — meta-agent that interviews you and saves a workflow
 - `/run/[workflowId]` — runs a saved workflow with the same runtime
 - `/runs` — replayable history of every run (interactive + scheduled)
+- `.claude/skills/<skill>/SKILL.md` — agentskills.io-format skills created
+  from chat when you ask the agent to save a reusable skill
 
 See `CLAUDE.md` for architectural conventions.
 
@@ -182,9 +185,11 @@ sudo -u reckon -H bash -lc 'cd /srv/reckon/app && scripts/deploy.sh'
 The script pulls, installs, builds, and reloads pm2 with the fresh env in a
 single shot.
 
-The SQLite database (`data/agent.db`) and the GraphJin knowledge pack
-(`lib/agent/knowledge/*.json`, regenerated each boot) are the only stateful
-artifacts. Back up `data/` if you care about workflow + run history.
+The SQLite database (`data/agent.db`), generated skills
+(`.claude/skills/`), and the GraphJin knowledge pack
+(`lib/agent/knowledge/*.json`, regenerated each boot) are the stateful
+artifacts. Back up `data/` and `.claude/skills/` if you care about workflow,
+run, and skill history.
 
 ## Smoke test
 

@@ -18,13 +18,16 @@ export const DEFAULT_ALLOWED_TOOLS = [
   "WebFetch",
   "WebSearch",
   "AskUserQuestion",
+  "Skill",
   "mcp__ui__*",
+  "mcp__memory__*",
+  "mcp__skill_builder__*",
 ] as const;
 
 /**
  * Tools we always deny — they cause hangs (Monitor blocks until timeout
  * because the SDK can't consume its async event stream), pollute scope
- * (Task*, Skill, ToolSearch), or are duplicates that confuse the model.
+ * (Task*, ToolSearch), or are duplicates that confuse the model.
  */
 export const FIXED_DENY = [
   "Monitor",
@@ -35,7 +38,6 @@ export const FIXED_DENY = [
   "TaskGet",
   "TaskOutput",
   "TaskStop",
-  "Skill",
   "ToolSearch",
   "NotebookEdit",
   "mcp__chrome-devtools__*",

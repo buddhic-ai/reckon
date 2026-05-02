@@ -99,6 +99,7 @@ async function fireScheduledRun(workflowId: string): Promise<void> {
       askUser,
       abortController,
       mode: "headless",
+      runId,
     });
     finishRun({
       id: runId,

@@ -2,7 +2,11 @@ import type { Workflow } from "@/lib/workflow/schema";
 
 const HEADLESS_TAIL = `\nYou are running on a schedule with no operator present. Avoid AskUserQuestion if at all possible — make the best decision from the workflow's instructions and the data on disk. If you genuinely cannot proceed without input, ask once and the run will pause for the operator to resume manually.`;
 
-export function buildSystemPrompt(workflow: Workflow, mode: "live" | "headless"): string {
+export function buildSystemPrompt(
+  workflow: Workflow,
+  mode: "live" | "headless",
+  memoryContext?: string
+): string {
   const stepsBlock = workflow.steps
     .map((s, i) => `  ${i + 1}. ${s.description}`)
     .join("\n");
@@ -11,6 +15,9 @@ export function buildSystemPrompt(workflow: Workflow, mode: "live" | "headless")
   const overlayBlock = overlay ? `INSTRUCTIONS FROM AUTHOR:\n${overlay}\n\n` : "";
 
   const tail = mode === "headless" ? HEADLESS_TAIL : "";
+  const loadedMemory = memoryContext?.trim()
+    ? memoryContext.trim()
+    : "No core memories are currently loaded.";
 
   return `You are running a saved workflow on behalf of an operator.
 
@@ -19,6 +26,17 @@ ${workflow.description}
 
 ${overlayBlock}STEPS (follow roughly in this order; ask the operator if anything is ambiguous):
 ${stepsBlock}
+
+LONG-TERM MEMORY:
+Reckon has durable memory across chats, workflows, process restarts, and old
+agent sessions. Core memories are shown below, but the full memory/archive is
+larger than this prompt. Use mcp__memory__search before answering whenever the
+turn may depend on user preferences, prior decisions, business definitions,
+named entities, recurring workflows, corrections, or historical context. If you
+use memory, briefly call it out in the answer, e.g. "Using your saved definition
+of active customer..." or "I found an earlier note where you said...".
+
+${loadedMemory}
 
 TOOLS AVAILABLE:
   Bash       — shell commands. Includes \`graphjin cli\` (your DB tool, READ-ONLY).
@@ -33,9 +51,23 @@ TOOLS AVAILABLE:
   WebFetch   — fetch a URL.
   WebSearch  — web search.
   AskUserQuestion — ask the operator. Use sparingly.
+  Skill      — invoke available Claude Agent Skills from .claude/skills/ or
+               ~/.claude/skills/ when their descriptions match the task.
   mcp__ui__present — render structured cards (KPI / Table / Chart / Callout) to
                      the operator instead of plain markdown. PREFERRED when
                      you have numeric findings, tabular data, or a trend.
+  mcp__memory__search — search saved memories and older chat/run archives.
+  mcp__memory__remember — save durable memories when the operator explicitly
+                          asks you to remember something, gives a stable
+                          preference, defines a metric/business rule, or
+                          corrects a recurring assumption.
+  mcp__memory__forget — archive a saved memory when the operator asks you to
+                        forget, remove, replace, or correct it.
+  mcp__skill_builder__create_skill — create or update an agentskills.io skill
+                                     folder with SKILL.md and optional
+                                     scripts/, references/, or assets/ files.
+                                     Use only when the operator asks to save,
+                                     create, or update a reusable agent skill.
 
 DATA ACCESS — READ-ONLY:
 The database is queried exclusively via \`graphjin cli\` run through the Bash

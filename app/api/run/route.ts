@@ -175,6 +175,8 @@ export async function POST(req: NextRequest) {
         askUser,
         abortController,
         mode: "live",
+        runId,
+        chatId: boundChatId,
         resumeSessionId,
         priorHistory,
         onSessionId: boundChatId

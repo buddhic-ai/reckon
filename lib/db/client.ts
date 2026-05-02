@@ -46,6 +46,39 @@ function migrate(db: Db): void {
     json         TEXT NOT NULL,
     generated_at TEXT NOT NULL
   )`);
+
+  db.exec(`CREATE TABLE IF NOT EXISTS memories (
+    id             TEXT PRIMARY KEY,
+    kind           TEXT NOT NULL,
+    scope          TEXT NOT NULL,
+    scope_id       TEXT,
+    text           TEXT NOT NULL,
+    pinned         INTEGER NOT NULL DEFAULT 0,
+    confidence     REAL NOT NULL DEFAULT 0.8,
+    metadata_json  TEXT NOT NULL DEFAULT '{}',
+    source_run_id  TEXT,
+    source_chat_id TEXT,
+    use_count      INTEGER NOT NULL DEFAULT 0,
+    last_used_at   TEXT,
+    archived_at    TEXT,
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_memories_active ON memories(archived_at, updated_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope, scope_id, archived_at);
+  CREATE INDEX IF NOT EXISTS idx_memories_pinned ON memories(pinned, archived_at, updated_at DESC);
+
+  CREATE TABLE IF NOT EXISTS memory_events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    memory_id    TEXT,
+    run_id       TEXT,
+    chat_id      TEXT,
+    action       TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at   TEXT NOT NULL,
+    FOREIGN KEY (memory_id) REFERENCES memories(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_memory_events_memory ON memory_events(memory_id, id DESC);`);
 }
 
 export function closeDb(): void {

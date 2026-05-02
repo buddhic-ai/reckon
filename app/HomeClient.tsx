@@ -71,7 +71,7 @@ export function HomeClient({ suggestions }: Props) {
                 What do you want to know?
               </h1>
               <p className="mt-1.5 text-[14px] text-fg-2">
-                Ask a question, attach a file, or describe a recurring task to save as a workflow.
+                Ask a question, attach a file, save a workflow, or teach the agent a reusable skill.
               </p>
             </div>
 
@@ -102,7 +102,7 @@ export function HomeClient({ suggestions }: Props) {
             <div className="flex items-center gap-1.5 text-[11px] text-fg-3">
               <GitBranch className="h-3 w-3" />
               <span>
-                Saved workflows live in the sidebar. Tell the agent <span className="italic">save this as a workflow</span> to add one.
+                Saved workflows and skills live in the sidebar. Tell the agent <span className="italic">save this as a skill</span> to add one.
               </span>
             </div>
           </div>

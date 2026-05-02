@@ -154,10 +154,10 @@ export default function ChatPage({ params }: PageProps) {
         activeReaderRef.current = reader;
         const dec = new TextDecoder();
         let buf = "";
-        // Tool-use ids for in-flight workflow_builder tool calls. When the
-        // matching tool_result lands with ok=true, the workflow row exists
-        // in the DB and the sidebar should refresh.
+        // Tool-use ids for in-flight builder tool calls. When the matching
+        // tool_result lands with ok=true, the sidebar should refresh.
         const pendingWorkflowToolUseIds = new Set<string>();
+        const pendingSkillToolUseIds = new Set<string>();
         try {
           while (true) {
             const { value, done } = await reader.read();
@@ -194,12 +194,26 @@ export default function ChatPage({ params }: PageProps) {
                 ) {
                   pendingWorkflowToolUseIds.add(String(parsed.toolUseId ?? ""));
                 } else if (
+                  parsed?.type === "tool_call" &&
+                  typeof parsed.tool === "string" &&
+                  parsed.tool.startsWith("mcp__skill_builder__")
+                ) {
+                  pendingSkillToolUseIds.add(String(parsed.toolUseId ?? ""));
+                } else if (
                   parsed?.type === "tool_result" &&
                   pendingWorkflowToolUseIds.has(String(parsed.toolUseId ?? ""))
                 ) {
                   pendingWorkflowToolUseIds.delete(String(parsed.toolUseId));
                   if (parsed.ok) {
                     window.dispatchEvent(new Event("reckon:workflows-changed"));
+                  }
+                } else if (
+                  parsed?.type === "tool_result" &&
+                  pendingSkillToolUseIds.has(String(parsed.toolUseId ?? ""))
+                ) {
+                  pendingSkillToolUseIds.delete(String(parsed.toolUseId));
+                  if (parsed.ok) {
+                    window.dispatchEvent(new Event("reckon:skills-changed"));
                   }
                 }
                 appendEvent(parsed as RunEvent);

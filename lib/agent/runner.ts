@@ -11,8 +11,12 @@ import {
   matches,
 } from "./tool-defaults";
 import { buildPresentServer } from "./tools/present";
+import { buildMemoryServer } from "./tools/memory";
 import { workflowBuilderServer } from "./tools/createWorkflow";
+import { skillBuilderServer } from "./tools/createSkill";
 import { resolveClaudeBinaryPath } from "./claude-binary";
+import { formatMemoryPromptContext } from "@/lib/db/memories";
+import { ensureSkillsRoot } from "@/lib/skills/files";
 
 export interface AskUserQuestionInput {
   question: string;
@@ -81,6 +85,9 @@ export interface RunWorkflowOptions {
    * on the chat row so subsequent turns can resume.
    */
   onSessionId?: (sessionId: string) => void;
+  /** Current run/chat identifiers used for long-term memory search + writes. */
+  runId?: string;
+  chatId?: string;
 }
 
 /**
@@ -92,7 +99,9 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunWorkflow
   const abortController = opts.abortController ?? new AbortController();
   const costCap = env.costCapUsd();
 
-  const allowed = (workflow.allowedTools ?? DEFAULT_ALLOWED_TOOLS).slice();
+  const allowed = Array.from(
+    new Set([...(workflow.allowedTools ?? DEFAULT_ALLOWED_TOOLS), "mcp__memory__*"])
+  );
   const disallowed = [
     ...(workflow.disallowedTools ?? []),
     ...FIXED_DENY,
@@ -102,13 +111,23 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunWorkflow
 
   const canUseTool = makeGate(allowed, disallowed, askUser);
   const uiServer = buildPresentServer(emit);
+  const memoryServer = buildMemoryServer({
+    workflowId: workflow.id,
+    runId: opts.runId ?? null,
+    chatId: opts.chatId ?? null,
+  });
 
   let finalText = "";
   let totalTokens: number | undefined;
   let totalCostUsd: number | undefined;
   let needsInput = false;
 
-  const baseSystemPrompt = buildSystemPrompt(workflow, mode);
+  const memoryContext = formatMemoryPromptContext({
+    workflowId: workflow.id,
+    chatId: opts.chatId ?? null,
+    runId: opts.runId ?? null,
+  });
+  const baseSystemPrompt = buildSystemPrompt(workflow, mode, memoryContext);
   // When resuming, the SDK already has the prior conversation in the session
   // file — splicing priorHistory would double it. Skip it on resume.
   const fullSystemPrompt =
@@ -125,6 +144,7 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunWorkflow
 
   try {
     const claudeBinPath = resolveClaudeBinaryPath();
+    ensureSkillsRoot();
     for await (const message of query({
       prompt: userMessages as AsyncIterable<never>,
       options: {
@@ -133,7 +153,13 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunWorkflow
         maxTurns: 50,
         allowedTools: allowed,
         disallowedTools: disallowed,
-        mcpServers: { ui: uiServer, workflow_builder: workflowBuilderServer },
+        skills: "all",
+        mcpServers: {
+          ui: uiServer,
+          memory: memoryServer,
+          workflow_builder: workflowBuilderServer,
+          skill_builder: skillBuilderServer,
+        },
         canUseTool,
         abortController,
         resume: opts.resumeSessionId,
@@ -242,6 +268,7 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunWorkflow
 
 function makeGate(allowed: string[], disallowed: string[], askUser: AskUserFn) {
   let saveCalls = 0;
+  let skillSaveCalls = 0;
   return async (toolName: string, input: Record<string, unknown>) => {
     if (toolName === "AskUserQuestion") {
       return handleAskUserQuestion(input, askUser);
@@ -279,6 +306,19 @@ function makeGate(allowed: string[], disallowed: string[], askUser: AskUserFn) {
       }
       // Mandatory user confirmation. Build a human-readable summary, ask, deny on cancel.
       const denial = await confirmSaveWorkflow(input, askUser);
+      if (denial) return { behavior: "deny" as const, message: denial };
+    }
+    if (toolName === "mcp__skill_builder__create_skill") {
+      // Per-run idempotency: at most one skill save per SDK invocation.
+      skillSaveCalls++;
+      if (skillSaveCalls > 1) {
+        return {
+          behavior: "deny" as const,
+          message:
+            "create_skill already fired in this turn. Acknowledge the save and stop.",
+        };
+      }
+      const denial = await confirmSaveSkill(input, askUser);
       if (denial) return { behavior: "deny" as const, message: denial };
     }
     return { behavior: "allow" as const, updatedInput: input };
@@ -344,6 +384,69 @@ async function confirmSaveWorkflow(
   return "User declined the save. Ask what to change before trying again.";
 }
 
+/**
+ * Build a human-readable summary of a pending skill save and ask the user to
+ * confirm. Returns a denial string if the user cancels, null if approved.
+ */
+async function confirmSaveSkill(
+  input: Record<string, unknown>,
+  askUser: AskUserFn
+): Promise<string | null> {
+  const name = String(input.name ?? "(unnamed)");
+  const description = String(input.description ?? "");
+  const body = String(input.body ?? "");
+  const files = Array.isArray(input.files) ? input.files : [];
+  let existingNote = "";
+  let location = "";
+  try {
+    const { getSkill, getSkillsRoot } = await import("@/lib/skills/files");
+    if (getSkill(name)) {
+      existingNote = ` (updates existing — a skill named "${name}" already exists)`;
+    }
+    location = getSkillsRoot();
+  } catch {
+    // best-effort lookup
+  }
+
+  const fileLines = files
+    .slice(0, 8)
+    .map((f) => {
+      const file = f as { path?: unknown; content?: unknown };
+      const filePath = String(file.path ?? "(unnamed)");
+      const bytes =
+        typeof file.content === "string" ? `${file.content.length} chars` : "content";
+      return `- ${filePath} (${bytes})`;
+    })
+    .join("\n");
+  const hiddenFileCount = files.length > 8 ? `\n- ...and ${files.length - 8} more` : "";
+
+  const summary =
+    `**Save this agent skill?**${existingNote}\n\n` +
+    `**Name:** ${name}\n` +
+    `**Description:** ${description}\n` +
+    (location ? `**Location:** ${location}/${name}\n` : "") +
+    `**SKILL.md body:** ${body.length} characters\n` +
+    `**Extra files:** ${files.length === 0 ? "none" : `\n${fileLines}${hiddenFileCount}`}`;
+
+  const answer = await askUser({
+    header: "Confirm skill save",
+    question: summary,
+    options: [
+      { label: "Yes, save", description: "Persist this agentskills.io skill." },
+      { label: "Cancel", description: "Don't save; tell me what to change." },
+    ],
+  });
+  const normalized = answer.trim().toLowerCase();
+  if (
+    normalized.startsWith("yes") ||
+    normalized === "save" ||
+    normalized.includes("yes, save")
+  ) {
+    return null;
+  }
+  return "User declined the skill save. Ask what to change before trying again.";
+}
+
 interface SdkAskQuestion {
   question: string;
   header?: string;
@@ -398,14 +501,16 @@ function sdkMessageToEvents(message: unknown): RunEvent[] {
         const name = String(block.name ?? "unknown");
         const input = (block.input ?? {}) as Record<string, unknown>;
         // The present tool's input is replayed verbatim by the surface event;
-        // keep the tool_call entry compact to avoid double-storing payloads.
+        // skill creation can include large resource files. Keep those tool_call
+        // entries compact to avoid double-storing bulky payloads.
         const isPresent = name === "mcp__ui__present";
+        const isSkillCreate = name === "mcp__skill_builder__create_skill";
         events.push({
           type: "tool_call",
           toolUseId: String(block.id ?? ""),
           tool: name,
           summary: isPresent ? "rendering surface…" : formatToolArgs(input),
-          argsJson: isPresent ? undefined : safeStringify(input),
+          argsJson: isPresent || isSkillCreate ? undefined : safeStringify(input),
         });
       }
     }
