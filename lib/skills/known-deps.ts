@@ -59,4 +59,14 @@ export const KNOWN_SKILL_DEPS: Record<string, SkillDeps> = {
     apt: [],
     brew: [],
   },
+  "skill-creator": {
+    // Trimmed Reckon variant — eval-loop scripts that shell out to the `claude`
+    // CLI were dropped (see SKILL.md note). Only quick_validate.py needs an
+    // external dep; the rest are pure stdlib.
+    python: ["yaml"],
+    pip: ["PyYAML"],
+    binaries: [],
+    apt: [],
+    brew: [],
+  },
 };
