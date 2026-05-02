@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { ChatThread } from "@/components/ChatThread";
 import { Composer } from "@/components/Composer";
+import { PendingMemoryBanner } from "@/components/PendingMemoryBanner";
 import { uploadFiles, joinMessageWithAttachments } from "@/components/upload-helper";
 import type { RunEvent } from "@/lib/runtime/event-types";
 import type { ChatRow } from "@/lib/db/chats";
@@ -185,6 +186,14 @@ export default function ChatPage({ params }: PageProps) {
                   setRunId(null);
                   setActiveServerRunId(null);
                   activeRunIdRef.current = null;
+                  // Auto-memory classifier may have produced new pending
+                  // proposals — refetch the banner. The classifier runs
+                  // asynchronously after the SDK exits, so we wait a short
+                  // moment before signalling.
+                  setTimeout(
+                    () => window.dispatchEvent(new Event("reckon:run-complete")),
+                    1500
+                  );
                   continue;
                 }
                 if (
@@ -399,6 +408,7 @@ export default function ChatPage({ params }: PageProps) {
           onRetryUserMessage={onRetryUserMessage}
           onEditUserMessage={onEditUserMessage}
         />
+        <PendingMemoryBanner surface={{ kind: "chat", chatId }} />
         <Composer
           onSend={startTurn}
           disabled={streaming}

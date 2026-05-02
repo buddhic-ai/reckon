@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { ChatThread } from "@/components/ChatThread";
+import { PendingMemoryBanner } from "@/components/PendingMemoryBanner";
 import type { RunEvent } from "@/lib/runtime/event-types";
 import type { RunRow } from "@/lib/db/runs";
 
@@ -106,6 +107,11 @@ export default function RunDetailPage({ params }: PageProps) {
           ) : null}
         </div>
         <ChatThread events={events} showTools />
+        {!run.chat_id && (
+          <div className="shrink-0 border-t border-line bg-bg/80 px-5 py-3">
+            <PendingMemoryBanner surface={{ kind: "run", runId }} />
+          </div>
+        )}
       </div>
     </AppShell>
   );

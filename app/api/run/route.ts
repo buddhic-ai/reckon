@@ -177,6 +177,7 @@ export async function POST(req: NextRequest) {
         mode: "live",
         runId,
         chatId: boundChatId,
+        initialUserMessage,
         resumeSessionId,
         priorHistory,
         onSessionId: boundChatId

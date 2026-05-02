@@ -217,6 +217,70 @@ export function searchLongTermMemory(
   return { saved, archives };
 }
 
+export interface ConflictingMemory {
+  memory: Memory;
+  similarity: number;
+}
+
+/**
+ * Find existing memories that may conflict with a new draft. "Conflict" here
+ * means same kind + same effective scope + textual overlap above a threshold.
+ * Used by the auto-memory dispatcher to decide whether a draft can be saved
+ * directly or needs operator review.
+ */
+export function findConflictingMemories(
+  draft: {
+    text: string;
+    kind: MemoryKind;
+    scope: MemoryScope;
+    scopeId?: string | null;
+  },
+  threshold = 0.3
+): ConflictingMemory[] {
+  const scopedById = draft.scope === "workflow" || draft.scope === "chat";
+  const sql = scopedById
+    ? `SELECT * FROM memories
+       WHERE archived_at IS NULL AND kind = ? AND scope = ? AND scope_id = ?`
+    : `SELECT * FROM memories
+       WHERE archived_at IS NULL AND kind = ? AND scope = ?`;
+  const params: string[] = scopedById
+    ? [draft.kind, draft.scope, draft.scopeId ?? ""]
+    : [draft.kind, draft.scope];
+  const rows = getDb().prepare(sql).all(...params) as MemoryRow[];
+
+  const draftTokens = new Set(tokenize(draft.text));
+  if (draftTokens.size === 0) return [];
+
+  return rows
+    .map((row) => {
+      const memory = rowToMemory(row);
+      const memoryTokens = new Set(tokenize(memory.text));
+      const similarity = jaccard(draftTokens, memoryTokens);
+      return { memory, similarity };
+    })
+    .filter((r) => r.similarity >= threshold)
+    .sort((a, b) => b.similarity - a.similarity);
+}
+
+export function listAllMemories(options: { includeArchived?: boolean } = {}): Memory[] {
+  const rows = getDb()
+    .prepare(
+      options.includeArchived
+        ? `SELECT * FROM memories ORDER BY archived_at IS NULL DESC, updated_at DESC`
+        : `SELECT * FROM memories WHERE archived_at IS NULL ORDER BY pinned DESC, updated_at DESC`
+    )
+    .all() as MemoryRow[];
+  return rows.map(rowToMemory);
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 0;
+  let intersection = 0;
+  for (const t of a) if (b.has(t)) intersection++;
+  const union = a.size + b.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
 export function formatMemoryPromptContext(ctx: MemoryContext = {}): string {
   const core = getCoreMemories(ctx);
   if (core.length === 0) {

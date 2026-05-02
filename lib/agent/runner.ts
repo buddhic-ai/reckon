@@ -17,6 +17,7 @@ import { skillBuilderServer } from "./tools/createSkill";
 import { resolveClaudeBinaryPath } from "./claude-binary";
 import { formatMemoryPromptContext } from "@/lib/db/memories";
 import { ensureSkillsRoot } from "@/lib/skills/files";
+import { runAutoMemoryPipeline } from "./auto-memory";
 
 export interface AskUserQuestionInput {
   question: string;
@@ -88,6 +89,13 @@ export interface RunWorkflowOptions {
   /** Current run/chat identifiers used for long-term memory search + writes. */
   runId?: string;
   chatId?: string;
+  /**
+   * The operator-typed message that seeded this run. When present, the Stop
+   * hook fires the auto-memory classifier with this as the "user side" of
+   * the turn. Workflow runs without operator input (cron, default seeds)
+   * leave this unset so the classifier is skipped.
+   */
+  initialUserMessage?: string;
 }
 
 /**
@@ -142,6 +150,17 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunWorkflow
     opts.onSessionId?.(id);
   };
 
+  // Stop hook: when the SDK reports a successful turn, fire the auto-memory
+  // classifier in the background. We never `await` the work — the hook
+  // returns `{ async: true }` so the SDK proceeds without blocking the
+  // operator-facing response. Errors are swallowed inside the pipeline.
+  const autoMemoryHook = makeAutoMemoryStopHook({
+    workflowId: workflow.id,
+    runId: opts.runId,
+    chatId: opts.chatId,
+    initialUserMessage: opts.initialUserMessage,
+  });
+
   try {
     const claudeBinPath = resolveClaudeBinaryPath();
     ensureSkillsRoot();
@@ -161,6 +180,9 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunWorkflow
           skill_builder: skillBuilderServer,
         },
         canUseTool,
+        hooks: {
+          Stop: [{ hooks: [autoMemoryHook] }],
+        },
         abortController,
         resume: opts.resumeSessionId,
         ...(claudeBinPath ? { pathToClaudeCodeExecutable: claudeBinPath } : {}),
@@ -259,6 +281,56 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunWorkflow
     finalText,
     totalTokens,
     totalCostUsd,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Stop hook: auto-memory pipeline
+// ---------------------------------------------------------------------------
+
+interface AutoMemoryHookContext {
+  workflowId: string;
+  runId?: string;
+  chatId?: string;
+  initialUserMessage?: string;
+}
+
+/**
+ * Build the Stop-hook callback. Fires the auto-memory pipeline as a true
+ * fire-and-forget background task: the hook resolves immediately with
+ * `async: true` so the SDK never waits on the classifier's network call.
+ *
+ * Skips entirely when:
+ *   - `AGENT_AUTO_MEMORY=off` (the pipeline short-circuits inside)
+ *   - the run wasn't seeded by an operator-typed message (cron / default seed)
+ *   - the SDK's `last_assistant_message` is empty (e.g. tool-only turns)
+ */
+function makeAutoMemoryStopHook(ctx: AutoMemoryHookContext) {
+  // Cast on call: SDK types are too narrow for the hook input across versions.
+  return async (input: unknown): Promise<Record<string, unknown>> => {
+    if (env.autoMemoryMode() === "off") {
+      return { async: true };
+    }
+    if (!ctx.runId || !ctx.initialUserMessage?.trim()) {
+      return { async: true };
+    }
+    const stopInput = input as { last_assistant_message?: string };
+    const agentAnswer = stopInput.last_assistant_message?.trim();
+    if (!agentAnswer) {
+      return { async: true };
+    }
+
+    // Schedule classification on the next tick — the SDK has just received
+    // our `async: true` so the user-facing turn is already returning.
+    void runAutoMemoryPipeline({
+      workflowId: ctx.workflowId,
+      runId: ctx.runId,
+      chatId: ctx.chatId ?? null,
+      userMessage: ctx.initialUserMessage,
+      agentAnswer,
+    });
+
+    return { async: true };
   };
 }
 

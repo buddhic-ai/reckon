@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Plus, MessageSquare, GitBranch, History, Trash2, Sparkles } from "lucide-react";
+import { Plus, MessageSquare, GitBranch, History, Trash2, Sparkles, Brain } from "lucide-react";
 import { brand } from "@/lib/brand";
 import type { ChatRow } from "@/lib/db/chats";
 import type { Workflow as WorkflowDef } from "@/lib/workflow/schema";
@@ -121,6 +121,7 @@ export function Sidebar() {
     : null;
   const onHome = pathname === "/";
   const onRuns = pathname === "/runs";
+  const onMemory = pathname === "/m" || pathname?.startsWith("/m/");
 
   const deleteChat = useCallback(
     async (chat: ChatRow) => {
@@ -275,6 +276,15 @@ export function Sidebar() {
       </Section>
 
       <div className="mt-auto border-t border-line px-2 py-2">
+        <Link
+          href="/m"
+          className={`flex h-8 items-center gap-2 rounded-md px-2 text-[12.5px] transition-colors ${
+            onMemory ? "bg-bg-2 text-fg" : "text-fg-2 hover:bg-bg-2 hover:text-fg-1"
+          }`}
+        >
+          <Brain className="h-3.5 w-3.5" />
+          Memory
+        </Link>
         <Link
           href="/runs"
           className={`flex h-8 items-center gap-2 rounded-md px-2 text-[12.5px] transition-colors ${

@@ -87,3 +87,29 @@ CREATE TABLE IF NOT EXISTS memory_events (
   FOREIGN KEY (memory_id) REFERENCES memories(id)
 );
 CREATE INDEX IF NOT EXISTS idx_memory_events_memory ON memory_events(memory_id, id DESC);
+
+-- Drafts produced by the auto-memory classifier that need operator review.
+-- Lives parallel to `memories`: high-confidence drafts with no conflicts get
+-- written straight to `memories`; ambiguous or conflicting ones land here and
+-- surface above the composer until the operator accepts/declines.
+CREATE TABLE IF NOT EXISTS pending_memories (
+  id              TEXT PRIMARY KEY,
+  chat_id         TEXT,
+  run_id          TEXT,
+  workflow_id     TEXT,
+  status          TEXT NOT NULL,
+  draft_text      TEXT NOT NULL,
+  draft_kind      TEXT NOT NULL,
+  draft_scope     TEXT NOT NULL,
+  draft_scope_id  TEXT,
+  confidence      REAL NOT NULL,
+  reasoning       TEXT,
+  conflict_json   TEXT,
+  decision_text   TEXT,
+  decided_at      TEXT,
+  memory_id       TEXT,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pending_chat ON pending_memories(chat_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_memories(status, created_at DESC);
