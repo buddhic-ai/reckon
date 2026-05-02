@@ -58,25 +58,56 @@ function walkNode(node: unknown, parent: MdNode | null): void {
 
 const REMARK_PLUGINS = [remarkGfm, autolinkFilePaths];
 
-// Open file links (uploads + agent-generated downloads under /api/files/...)
-// in a new tab so the chat thread doesn't get replaced by the file. Other
-// links keep default behaviour.
+// File links (uploads + agent-generated downloads under /api/files/...)
+// must never navigate the current tab — that would replace the chat thread.
+// Try a new tab first; if a popup blocker intercepts (window.open returns
+// null), fall back to a programmatic <a download> click. preventDefault
+// guarantees no current-tab navigation in any code path. Modifier-key /
+// middle clicks pass through so users keep "open in new tab" muscle memory.
+function openFileLink(href: string) {
+  const w = window.open(href, "_blank", "noopener,noreferrer");
+  if (w) return;
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = "";
+  a.rel = "noopener noreferrer";
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 const MARKDOWN_COMPONENTS = {
   a({
     href,
     children,
+    onClick,
     ...props
   }: AnchorHTMLAttributes<HTMLAnchorElement> & { children?: ReactNode }) {
     const isFile = typeof href === "string" && href.startsWith("/api/files/");
     if (isFile) {
       return (
-        <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => {
+            onClick?.(e);
+            if (e.defaultPrevented) return;
+            // Let the browser handle Cmd/Ctrl/Shift/Alt-click and middle-
+            // click natively (open-in-new-tab muscle memory).
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            e.preventDefault();
+            if (typeof href === "string") openFileLink(href);
+          }}
+          {...props}
+        >
           {children}
         </a>
       );
     }
     return (
-      <a href={href} {...props}>
+      <a href={href} onClick={onClick} {...props}>
         {children}
       </a>
     );
