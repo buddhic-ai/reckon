@@ -14,6 +14,12 @@ export interface SkillWriteResult {
   skill: SkillDetail;
 }
 
+// Cap the SKILL.md read size so a runaway file can't blow up memory at
+// list-time. The save path already enforces 200KB on body + small caps on
+// other fields, so a healthy file is well under this. We're a bit looser on
+// read because skills authored elsewhere may include large embedded data.
+const MAX_SKILL_MD_BYTES = 1 * 1024 * 1024;
+
 // Hardcoded so the writer can never drift from where the Claude Agent SDK
 // scans for project skills (`<cwd>/.claude/skills/<name>/SKILL.md`). Resolved
 // against process.cwd() at call time, matching the SDK's default cwd.
@@ -33,7 +39,16 @@ export function listSkills(): SkillSummary[] {
   const rows: SkillSummary[] = [];
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const detail = getSkill(entry.name);
+    let detail: SkillDetail | null = null;
+    try {
+      detail = getSkill(entry.name);
+    } catch (err) {
+      console.warn(
+        `[skills] failed to load "${entry.name}":`,
+        err instanceof Error ? err.message : String(err)
+      );
+      continue;
+    }
     if (detail) {
       rows.push({
         name: detail.name,
@@ -52,22 +67,45 @@ export function getSkill(name: string): SkillDetail | null {
   const parsedName = SkillName.safeParse(name);
   if (!parsedName.success) return null;
   const dir = resolveSkillDir(parsedName.data);
+  const dirStat = fs.lstatSync(dir, { throwIfNoEntry: false });
+  if (!dirStat || !dirStat.isDirectory() || dirStat.isSymbolicLink()) return null;
+
   const skillPath = path.join(dir, "SKILL.md");
-  if (!fs.existsSync(skillPath)) return null;
+  const fileStat = fs.lstatSync(skillPath, { throwIfNoEntry: false });
+  if (!fileStat || !fileStat.isFile() || fileStat.isSymbolicLink()) return null;
+  if (fileStat.size > MAX_SKILL_MD_BYTES) {
+    console.warn(
+      `[skills] "${parsedName.data}" SKILL.md exceeds ${MAX_SKILL_MD_BYTES} bytes; skipping`
+    );
+    return null;
+  }
 
   const markdown = fs.readFileSync(skillPath, "utf8");
   const parsed = parseSkillMarkdown(markdown);
-  const stat = fs.statSync(skillPath);
+  const description = parsed.frontmatter.description.trim();
+  if (!description) {
+    console.warn(
+      `[skills] "${parsedName.data}" has empty description; skipping (the model needs one to disclose)`
+    );
+    return null;
+  }
+  const declaredName = parsed.frontmatter.name.trim();
+  if (declaredName && declaredName !== parsedName.data) {
+    console.warn(
+      `[skills] "${parsedName.data}" frontmatter name "${declaredName}" disagrees with directory; using directory name`
+    );
+  }
+
   const files = collectFiles(dir);
   return {
-    name: parsed.frontmatter.name || parsedName.data,
-    description: parsed.frontmatter.description || "",
+    name: parsedName.data,
+    description,
     path: dir,
-    updatedAt: stat.mtime.toISOString(),
+    updatedAt: fileStat.mtime.toISOString(),
     fileCount: files.length,
     body: parsed.body,
     skillMarkdown: markdown,
-    frontmatter: parsed.frontmatter,
+    frontmatter: { ...parsed.frontmatter, name: parsedName.data, description },
     files,
   };
 }
