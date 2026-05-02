@@ -53,7 +53,7 @@ changing them requires a rebuild, not just a restart.
 ```bash
 pnpm install
 cp .env.example .env.local        # then fill in ANTHROPIC_API_KEY etc.
-pnpm doctor                       # report missing skill deps (see below)
+pnpm skills:check                 # report missing skill deps (see below)
 pnpm dev                          # binds to 127.0.0.1:3000
 ```
 
@@ -67,17 +67,25 @@ The Office skills shell out to Python helpers and LibreOffice for things like
 formula recalculation and slide rendering, so they need a few extra tools on
 the host. The `internal-comms` skill is pure prose and works out of the box.
 
-Run `pnpm doctor` any time to see what's missing on the current machine. It
-prints copy-pasteable install commands for your platform — `apt` on Linux,
-`brew` on macOS. `scripts/deploy.sh` runs it after build so deploy logs make
-the gap obvious. Missing deps don't block the app from starting; the affected
-skills just won't work end-to-end until you install them.
+Two commands cover the lifecycle:
 
-Typical Linux server install (Debian/Ubuntu):
+- `pnpm skills:check` — reports per-skill OK/MISSING and prints
+  copy-pasteable install commands for both Linux and macOS. Inspection only.
+- `pnpm skills:install` — Linux only. Actually runs the apt + pip installs
+  for whatever's missing. macOS dev machines stay manual (we don't want to
+  silently `brew install --cask libreoffice`).
+
+`scripts/deploy.sh` calls `pnpm skills:install` after `pnpm build`, so each
+production deploy auto-picks up new deps as new skills land. Non-blocking —
+if install fails the app still starts; the affected skills just don't work
+until the failure is resolved.
+
+Typical Linux server install (Debian/Ubuntu) — what `skills:install` runs:
 
 ```bash
 sudo apt-get install -y python3 python3-pip libreoffice poppler-utils qpdf
-pip3 install --user openpyxl python-pptx python-docx pypdf pdfplumber reportlab Pillow
+python3 -m pip install --user --break-system-packages \
+  PyYAML python-docx pypdf pdfplumber reportlab Pillow python-pptx openpyxl
 ```
 
 GraphJin must be running before the dev server starts, otherwise the

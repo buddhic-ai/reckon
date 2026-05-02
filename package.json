@@ -10,7 +10,8 @@
     "lint": "eslint",
     "smoke": "tsx scripts/smoke-test.ts",
     "smoke:sql": "tsx scripts/smoke-test.ts --no-agent",
-    "doctor": "tsx scripts/doctor.ts"
+    "skills:check": "tsx scripts/doctor.ts",
+    "skills:install": "tsx scripts/doctor.ts --install"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "latest",

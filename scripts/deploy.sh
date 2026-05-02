@@ -29,8 +29,8 @@ fi
 # Pull latest, then re-exec the (possibly updated) script. Without this, bash
 # continues reading from the file descriptor that pointed to the pre-pull
 # inode of this file and silently skips any lines added by the pull — so a
-# fresh `pnpm doctor` step (or any other addition below `git pull`) won't
-# run on the very deploy that pulls it in.
+# fresh `pnpm skills:install` step (or any other addition below `git pull`)
+# won't run on the very deploy that pulls it in.
 git pull --ff-only
 if [ "${RECKON_DEPLOY_REEXEC:-}" != "1" ]; then
   export RECKON_DEPLOY_REEXEC=1
@@ -40,10 +40,11 @@ fi
 pnpm install --frozen-lockfile
 pnpm build
 
-# Surface missing skill dependencies (Python libs, LibreOffice, etc.) so the
-# deploy log makes it obvious what to install. Non-blocking — the app still
-# starts; the affected skills just won't work end-to-end until deps are added.
-pnpm doctor || true
+# Auto-install any missing skill dependencies (Python libs, LibreOffice, etc.)
+# so each deploy stays self-sufficient as new skills land. Non-blocking — if
+# install fails the app still starts; the affected skills just won't work
+# end-to-end until the failure is resolved.
+pnpm skills:install || true
 
 # Make sure the SQLite directory exists before the app starts.
 mkdir -p data

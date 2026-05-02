@@ -2,15 +2,13 @@
 /**
  * Skill dependency doctor.
  *
- *   pnpm doctor
+ *   pnpm skills:check              # report-only: per-skill status + install commands
+ *   pnpm skills:check --install    # Linux only: actually run the apt + pip installs
  *
- * Two views, one command:
- *
- *   1. Audit — per-skill OK/MISSING status for the current machine. Tells you
- *      what's broken right now.
- *   2. Install commands — copy-pasteable per-platform setup for everything
- *      every installed skill needs, regardless of what's locally present.
- *      Useful when deploying to a fresh Linux VM from a developer Mac.
+ * The --install mode is what scripts/deploy.sh uses so each deploy
+ * automatically picks up new deps introduced by new skills. macOS doesn't
+ * auto-install — brewing LibreOffice (Cask, ~500MB) silently is not friendly
+ * dev-machine behaviour, so on Mac the script prints the commands and exits.
  *
  * Skills not in KNOWN_SKILL_DEPS (typically user-authored) are reported as
  * "unknown" — present but not checked. Exits non-zero if anything is missing
@@ -21,6 +19,8 @@ import { listSkills } from "@/lib/skills/files";
 import { KNOWN_SKILL_DEPS } from "@/lib/skills/known-deps";
 
 const isMac = process.platform === "darwin";
+const isLinux = process.platform === "linux";
+const flagInstall = process.argv.includes("--install");
 
 function which(cmd: string): boolean {
   try {
@@ -55,7 +55,13 @@ const allPip = new Set<string>();
 const allApt = new Set<string>();
 const allBrew = new Set<string>();
 
+// Subset of allApt / allPip that's actually missing on this host. Drives
+// the --install runner so we don't reinstall things that are already there.
+const localMissingApt = new Set<string>();
+const localMissingPip = new Set<string>();
+
 const pythonPresent = which("python3");
+const pip3Present = which("pip3");
 
 for (const skill of installed) {
   const deps = KNOWN_SKILL_DEPS[skill.name];
@@ -70,13 +76,19 @@ for (const skill of installed) {
   const missing: string[] = [];
   if (pythonPresent) {
     for (let i = 0; i < deps.python.length; i++) {
-      if (!pythonHas(deps.python[i])) missing.push(`py:${deps.python[i]}`);
+      if (!pythonHas(deps.python[i])) {
+        missing.push(`py:${deps.python[i]}`);
+        localMissingPip.add(deps.pip[i]);
+      }
     }
   } else if (deps.python.length > 0) {
     missing.push("py:python3");
   }
-  for (const bin of deps.binaries) {
-    if (!which(bin)) missing.push(`bin:${bin}`);
+  for (let i = 0; i < deps.binaries.length; i++) {
+    if (!which(deps.binaries[i])) {
+      missing.push(`bin:${deps.binaries[i]}`);
+      localMissingApt.add(deps.apt[i] ?? deps.binaries[i]);
+    }
   }
   reports.push({
     name: skill.name,
@@ -106,14 +118,66 @@ const allOkLocally = reports.every((r) => r.status !== "missing");
 const haveDeps = allPip.size + allApt.size + allBrew.size > 0;
 
 if (allOkLocally) {
-  console.log("All bundled skills are ready to use on this machine.");
+  console.log("All bundled skills are ready to use on this machine.\n");
+  process.exit(0);
 }
 
+// --- INSTALL MODE ---
+if (flagInstall) {
+  if (!isLinux) {
+    console.log(
+      isMac
+        ? "--install is Linux-only. On macOS, run the brew/pip commands below manually.\n"
+        : "--install only supports Linux (Debian/Ubuntu).\n"
+    );
+    process.exit(1);
+  }
+
+  const aptList: string[] = [...localMissingApt];
+  if (!pythonPresent) aptList.unshift("python3");
+  if (localMissingPip.size > 0 && (!pip3Present || !pythonPresent)) {
+    aptList.unshift("python3-pip");
+  }
+  const pipList = [...localMissingPip];
+
+  if (aptList.length === 0 && pipList.length === 0) {
+    console.log("Nothing to install.\n");
+    process.exit(0);
+  }
+
+  console.log("Installing missing dependencies on this Linux host...\n");
+
+  if (aptList.length > 0) {
+    const cmd = `sudo apt-get install -y ${aptList.join(" ")}`;
+    console.log(`$ ${cmd}\n`);
+    try {
+      execSync(cmd, { stdio: "inherit" });
+    } catch {
+      console.error("\napt-get install failed — skipping pip step.\n");
+      process.exit(1);
+    }
+  }
+
+  if (pipList.length > 0) {
+    // --break-system-packages handles PEP 668 on Ubuntu 23.04+; on older pip
+    // it's an unknown flag and pip errors loudly, which is the right signal.
+    const cmd = `python3 -m pip install --user --break-system-packages ${pipList.join(" ")}`;
+    console.log(`\n$ ${cmd}\n`);
+    try {
+      execSync(cmd, { stdio: "inherit" });
+    } catch {
+      console.error("\npip install failed.\n");
+      process.exit(1);
+    }
+  }
+
+  console.log("\nDone. Skill deps installed.\n");
+  process.exit(0);
+}
+
+// --- REPORT MODE ---
 if (haveDeps) {
-  console.log(allOkLocally
-    ? "\nFor reference — to set up a fresh machine with the same skills:\n"
-    : "Install commands (full set, suitable for a fresh machine):\n"
-  );
+  console.log("Install commands (full set, suitable for a fresh machine):\n");
 
   // Always show both blocks. Devs on macOS often deploy to a Linux VM and want
   // both lines visible at once; native platform first so the eye lands on the
@@ -141,7 +205,10 @@ if (haveDeps) {
   };
   if (isMac) { macBlock(); linuxBlock(); } else { linuxBlock(); macBlock(); }
 
-  if (!allOkLocally) console.log("Re-run `pnpm doctor` to verify.\n");
+  console.log(isLinux
+    ? "Run `pnpm skills:install` to install these automatically.\n"
+    : "Re-run `pnpm skills:check` to verify.\n"
+  );
 }
 
-process.exit(allOkLocally ? 0 : 1);
+process.exit(1);
