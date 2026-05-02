@@ -38,9 +38,14 @@ export async function GET(
     return new Response("not found", { status: 404 });
   }
 
-  const root = process.cwd();
-  const rel = path.join(...parts);
-  const abs = path.resolve(root, rel);
+  // turbopackIgnore: this route serves user-uploaded and agent-generated
+  // files from data/{reports,uploads}/. Paths are validated at runtime by the
+  // ALLOWED_PREFIXES check below. Turbopack's NFT tracer can't see through
+  // the runtime check and would otherwise trace the entire project into the
+  // route bundle ("Encountered unexpected file in NFT list" warning).
+  const root = /*turbopackIgnore: true*/ process.cwd();
+  const rel = path.join(/*turbopackIgnore: true*/ ...parts);
+  const abs = path.resolve(/*turbopackIgnore: true*/ root, rel);
 
   if (abs !== path.normalize(abs) || !abs.startsWith(root + path.sep)) {
     return new Response("not found", { status: 404 });

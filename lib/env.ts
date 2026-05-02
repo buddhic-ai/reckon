@@ -23,7 +23,10 @@ function num(name: string, fallback: number): number {
 export const env = {
   anthropicApiKey: () => required("ANTHROPIC_API_KEY"),
   anthropicModel: () => optional("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
-  dbPath: () => path.resolve(process.cwd(), optional("AGENT_DB_PATH", "./data/agent.db")),
+  // turbopackIgnore: SQLite path resolution at runtime — Turbopack's NFT
+  // tracer otherwise treats the dynamic env-var argument as a candidate
+  // require root and pulls the whole project into the bundle.
+  dbPath: () => path.resolve(/*turbopackIgnore: true*/ process.cwd(), optional("AGENT_DB_PATH", "./data/agent.db")),
   costCapUsd: () => num("AGENT_COST_CAP_USD", 5),
   autoMemoryMode: (): "off" | "propose" | "on" => {
     const v = (process.env.AGENT_AUTO_MEMORY ?? "on").trim().toLowerCase();

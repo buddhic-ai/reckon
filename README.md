@@ -80,6 +80,13 @@ production deploy auto-picks up new deps as new skills land. Non-blocking —
 if install fails the app still starts; the affected skills just don't work
 until the failure is resolved.
 
+The deploy user needs **passwordless `sudo` for `apt-get`** — `skills:install`
+runs `sudo apt-get install -y …` to install system packages. Cloud VMs
+(default `ubuntu` user on AWS/GCP/Hetzner images) already have this; on a
+custom host add `ubuntu ALL=(ALL) NOPASSWD: /usr/bin/apt-get` to
+`/etc/sudoers.d/reckon-deploy`. The pip step uses `--user` and doesn't need
+sudo.
+
 Typical Linux server install (Debian/Ubuntu) — what `skills:install` runs:
 
 ```bash

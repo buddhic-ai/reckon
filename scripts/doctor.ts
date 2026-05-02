@@ -161,7 +161,9 @@ if (flagInstall) {
   if (pipList.length > 0) {
     // --break-system-packages handles PEP 668 on Ubuntu 23.04+; on older pip
     // it's an unknown flag and pip errors loudly, which is the right signal.
-    const cmd = `python3 -m pip install --user --break-system-packages ${pipList.join(" ")}`;
+    // --no-warn-script-location silences ~/.local/bin PATH warnings — our
+    // skills import the libraries, they don't shell out to the bundled CLIs.
+    const cmd = `python3 -m pip install --user --break-system-packages --no-warn-script-location ${pipList.join(" ")}`;
     console.log(`\n$ ${cmd}\n`);
     try {
       execSync(cmd, { stdio: "inherit" });

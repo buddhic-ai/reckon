@@ -34,11 +34,15 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "image uploads are not supported" }, { status: 415 });
   }
 
+  // turbopackIgnore: paths target data/uploads/<chatId>/<safe-filename>; the
+  // chatId/filename are dynamic but the static prefix is bounded. Without
+  // these annotations, NFT pessimistically traces the whole project into
+  // this route's bundle ("Encountered unexpected file in NFT list").
   const safeName = sanitiseFilename(file.name);
-  const relDir = path.posix.join("data", "uploads", chatId);
-  const absDir = path.join(process.cwd(), relDir);
+  const relDir = path.posix.join(/*turbopackIgnore: true*/ "data", "uploads", chatId);
+  const absDir = path.join(/*turbopackIgnore: true*/ process.cwd(), relDir);
   await fs.mkdir(absDir, { recursive: true });
-  const dest = path.join(absDir, safeName);
+  const dest = path.join(/*turbopackIgnore: true*/ absDir, safeName);
   const buf = Buffer.from(await file.arrayBuffer());
   await fs.writeFile(dest, buf);
   return Response.json({
