@@ -30,6 +30,7 @@ interface Props {
 
 const MAX_FILES = 5;
 const MAX_SIZE = 10 * 1024 * 1024;
+const MAX_TEXTAREA_HEIGHT = 470;
 
 /**
  * Composer is one bordered shell containing the textarea, attachments, and
@@ -84,6 +85,14 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     }, 250);
     return () => clearTimeout(t);
   }, [text, draftKey]);
+
+  // Auto-grow the textarea up to ~20 lines, then let it scroll internally.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`;
+  }, [text]);
 
   function submit() {
     const t = text.trim();
@@ -162,7 +171,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             rows={2}
             disabled={disabled}
             placeholder={placeholder ?? "Send a message…"}
-            className="composer-input px-3 pt-2.5"
+            style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
+            className="composer-input px-3 pt-2.5 overflow-y-auto"
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
