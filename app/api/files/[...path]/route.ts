@@ -21,7 +21,13 @@ const CONTENT_TYPES: Record<string, string> = {
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
   ".svg": "image/svg+xml",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 };
+
+// Browsers can't preview these — force download instead of inline display.
+const FORCE_DOWNLOAD = new Set([".docx", ".xlsx", ".pptx"]);
 
 export async function GET(
   _req: NextRequest,
@@ -53,12 +59,13 @@ export async function GET(
   const ext = path.extname(abs).toLowerCase();
   const type = CONTENT_TYPES[ext] ?? "application/octet-stream";
   const filename = path.basename(abs);
+  const disposition = FORCE_DOWNLOAD.has(ext) ? "attachment" : "inline";
 
   return new Response(new Uint8Array(buf), {
     headers: {
       "Content-Type": type,
       "Content-Length": String(stat.size),
-      "Content-Disposition": `inline; filename="${filename.replace(/"/g, "")}"`,
+      "Content-Disposition": `${disposition}; filename="${filename.replace(/"/g, "")}"`,
       "Cache-Control": "private, max-age=0, must-revalidate",
     },
   });

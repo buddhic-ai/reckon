@@ -213,6 +213,10 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         err = `"${f.name}" is over 10 MB and was skipped.`;
         continue;
       }
+      if (f.type.startsWith("image/")) {
+        err = `Image uploads aren't supported yet — "${f.name}" was skipped.`;
+        continue;
+      }
       next.push(f);
     }
     setFiles(next);
@@ -354,6 +358,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                 ref={fileInputRef}
                 type="file"
                 multiple
+                accept=".pdf,.docx,.xlsx,.pptx,.csv,.txt,.md,.json,.html"
                 className="hidden"
                 onChange={onPickFiles}
               />

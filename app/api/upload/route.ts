@@ -30,6 +30,9 @@ export async function POST(req: NextRequest) {
   if (file.size > MAX_SIZE) {
     return Response.json({ error: `file too large (max ${MAX_SIZE} bytes)` }, { status: 413 });
   }
+  if (file.type.startsWith("image/")) {
+    return Response.json({ error: "image uploads are not supported" }, { status: 415 });
+  }
 
   const safeName = sanitiseFilename(file.name);
   const relDir = path.posix.join("data", "uploads", chatId);
