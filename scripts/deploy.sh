@@ -26,8 +26,17 @@ if ! command -v pm2 >/dev/null 2>&1; then
   exit 1
 fi
 
-# Pull latest, install deps, build.
+# Pull latest, then re-exec the (possibly updated) script. Without this, bash
+# continues reading from the file descriptor that pointed to the pre-pull
+# inode of this file and silently skips any lines added by the pull — so a
+# fresh `pnpm doctor` step (or any other addition below `git pull`) won't
+# run on the very deploy that pulls it in.
 git pull --ff-only
+if [ "${RECKON_DEPLOY_REEXEC:-}" != "1" ]; then
+  export RECKON_DEPLOY_REEXEC=1
+  exec "$0" "$@"
+fi
+
 pnpm install --frozen-lockfile
 pnpm build
 
