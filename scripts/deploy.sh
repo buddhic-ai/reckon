@@ -31,6 +31,11 @@ git pull --ff-only
 pnpm install --frozen-lockfile
 pnpm build
 
+# Surface missing skill dependencies (Python libs, LibreOffice, etc.) so the
+# deploy log makes it obvious what to install. Non-blocking — the app still
+# starts; the affected skills just won't work end-to-end until deps are added.
+pnpm doctor || true
+
 # Make sure the SQLite directory exists before the app starts.
 mkdir -p data
 

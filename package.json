@@ -9,7 +9,8 @@
     "start": "next start -H 127.0.0.1",
     "lint": "eslint",
     "smoke": "tsx scripts/smoke-test.ts",
-    "smoke:sql": "tsx scripts/smoke-test.ts --no-agent"
+    "smoke:sql": "tsx scripts/smoke-test.ts --no-agent",
+    "doctor": "tsx scripts/doctor.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "latest",

@@ -53,10 +53,32 @@ changing them requires a rebuild, not just a restart.
 ```bash
 pnpm install
 cp .env.example .env.local        # then fill in ANTHROPIC_API_KEY etc.
+pnpm doctor                       # report missing skill deps (see below)
 pnpm dev                          # binds to 127.0.0.1:3000
 ```
 
 Open http://127.0.0.1:3000.
+
+## Skill dependencies
+
+Reckon ships with a handful of agentskills.io-format skills under
+`.claude/skills/` — currently `xlsx`, `pptx`, `pdf`, `docx`, `internal-comms`.
+The Office skills shell out to Python helpers and LibreOffice for things like
+formula recalculation and slide rendering, so they need a few extra tools on
+the host. The `internal-comms` skill is pure prose and works out of the box.
+
+Run `pnpm doctor` any time to see what's missing on the current machine. It
+prints copy-pasteable install commands for your platform — `apt` on Linux,
+`brew` on macOS. `scripts/deploy.sh` runs it after build so deploy logs make
+the gap obvious. Missing deps don't block the app from starting; the affected
+skills just won't work end-to-end until you install them.
+
+Typical Linux server install (Debian/Ubuntu):
+
+```bash
+sudo apt-get install -y python3 python3-pip libreoffice poppler-utils qpdf
+pip3 install --user openpyxl python-pptx python-docx pypdf pdfplumber reportlab Pillow
+```
 
 GraphJin must be running before the dev server starts, otherwise the
 knowledge prefetch fails on boot. The probe at `lib/agent/graphjin-probe.ts`
