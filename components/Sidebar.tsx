@@ -19,16 +19,8 @@ interface WorkflowSummary {
   lastRunStatus?: RunStatus | null;
 }
 
-interface SkillSummary {
-  name: string;
-  description: string;
-  updatedAt: string;
-  fileCount: number;
-}
-
 const LS_CHATS = "agent.sidebar.chats";
 const LS_WORKFLOWS = "agent.sidebar.workflows";
-const LS_SKILLS = "agent.sidebar.skills";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -37,27 +29,23 @@ export function Sidebar() {
   // is read in the effect below to avoid a hydration mismatch.
   const [chats, setChats] = useState<ChatRow[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
-  const [skills, setSkills] = useState<SkillSummary[]>([]);
 
   // Hydrate from localStorage cache immediately after mount (instant render)
   // and then refresh from the server.
   useEffect(() => {
     const cachedChats = readLocal<ChatRow[]>(LS_CHATS, []);
     const cachedWorkflows = readLocal<WorkflowSummary[]>(LS_WORKFLOWS, []);
-    const cachedSkills = readLocal<SkillSummary[]>(LS_SKILLS, []);
     /* eslint-disable react-hooks/set-state-in-effect */
     if (cachedChats.length) setChats(cachedChats);
     if (cachedWorkflows.length) setWorkflows(cachedWorkflows);
-    if (cachedSkills.length) setSkills(cachedSkills);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   const refresh = useCallback(async () => {
     try {
-      const [chatRes, wfRes, skillRes] = await Promise.all([
+      const [chatRes, wfRes] = await Promise.all([
         fetch("/api/chats").then((r) => r.json()),
         fetch("/api/workflows").then((r) => r.json()),
-        fetch("/api/skills").then((r) => r.json()),
       ]);
       const cs = (chatRes.chats as ChatRow[]) ?? [];
       const ws = ((wfRes.workflows as (WorkflowDef & { hasCron?: boolean; lastRunStatus?: RunStatus | null })[]) ?? []).map((w) => ({
@@ -69,14 +57,11 @@ export function Sidebar() {
         lastRunStatus: w.lastRunStatus ?? null,
       }));
       const visibleWorkflows = ws.filter((w) => w.name !== "Ad-hoc Analyst");
-      const ss = (skillRes.skills as SkillSummary[]) ?? [];
       setChats(cs);
       setWorkflows(visibleWorkflows);
-      setSkills(ss);
       try {
         localStorage.setItem(LS_CHATS, JSON.stringify(cs));
         localStorage.setItem(LS_WORKFLOWS, JSON.stringify(visibleWorkflows));
-        localStorage.setItem(LS_SKILLS, JSON.stringify(ss));
       } catch {}
     } catch {}
   }, []);
@@ -91,16 +76,13 @@ export function Sidebar() {
   // Refresh on demand when other parts of the app mutate the relevant tables.
   // The chat page dispatches `reckon:workflows-changed` after the agent's
   // create_workflow tool returns ok=true, and `reckon:chats-changed` when a
-  // new chat is created or its title is set on the first turn. Skill saves
-  // dispatch `reckon:skills-changed`.
+  // new chat is created or its title is set on the first turn.
   useEffect(() => {
     const onChange = () => void refresh();
     window.addEventListener("reckon:workflows-changed", onChange);
-    window.addEventListener("reckon:skills-changed", onChange);
     window.addEventListener("reckon:chats-changed", onChange);
     return () => {
       window.removeEventListener("reckon:workflows-changed", onChange);
-      window.removeEventListener("reckon:skills-changed", onChange);
       window.removeEventListener("reckon:chats-changed", onChange);
     };
   }, [refresh]);
@@ -117,12 +99,10 @@ export function Sidebar() {
 
   const activeChatId = pathname?.startsWith("/c/") ? pathname.slice(3) : null;
   const activeWorkflowId = pathname?.startsWith("/w/") ? pathname.slice(3) : null;
-  const activeSkillName = pathname?.startsWith("/s/")
-    ? decodeURIComponent(pathname.slice(3))
-    : null;
   const onHome = pathname === "/";
   const onRuns = pathname === "/runs";
   const onMemory = pathname === "/m" || pathname?.startsWith("/m/");
+  const onSkills = pathname === "/s" || pathname?.startsWith("/s/");
 
   const deleteChat = useCallback(
     async (chat: ChatRow) => {
@@ -169,31 +149,6 @@ export function Sidebar() {
       if (activeWorkflowId === wf.id) router.push("/");
     },
     [activeWorkflowId, router]
-  );
-
-  const deleteSkill = useCallback(
-    async (skill: SkillSummary) => {
-      const ok = await confirmDialog({
-        title: `Delete skill "${skill.name}"?`,
-        description: "Removes the skill folder from .claude/skills/.",
-        confirmLabel: "Delete",
-        destructive: true,
-      });
-      if (!ok) return;
-      const res = await fetch(`/api/skills/${encodeURIComponent(skill.name)}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) return;
-      setSkills((prev) => {
-        const next = prev.filter((s) => s.name !== skill.name);
-        try {
-          localStorage.setItem(LS_SKILLS, JSON.stringify(next));
-        } catch {}
-        return next;
-      });
-      if (activeSkillName === skill.name) router.push("/");
-    },
-    [activeSkillName, router]
   );
 
   return (
@@ -272,29 +227,16 @@ export function Sidebar() {
         </div>
       </Section>
 
-      <Section icon={<Sparkles className="h-3 w-3" />} label="Skills" total={skills.length}>
-        <div className="max-h-[25vh] overflow-y-auto pb-2">
-          {skills.length === 0 ? (
-            <Empty>
-              Tell the agent <span className="italic">save this as a skill</span>.
-            </Empty>
-          ) : (
-            skills.map((skill) => (
-              <SidebarRow
-                key={skill.name}
-                href={`/s/${encodeURIComponent(skill.name)}`}
-                active={activeSkillName === skill.name}
-                title={skill.description}
-                label={skill.name}
-                onDelete={() => deleteSkill(skill)}
-                deleteLabel="Delete skill"
-              />
-            ))
-          )}
-        </div>
-      </Section>
-
       <div className="mt-auto border-t border-line px-2 py-2">
+        <Link
+          href="/s"
+          className={`flex h-8 items-center gap-2 rounded-md px-2 text-[12.5px] transition-colors ${
+            onSkills ? "bg-bg-2 text-fg" : "text-fg-2 hover:bg-bg-2 hover:text-fg-1"
+          }`}
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          Skills
+        </Link>
         <Link
           href="/m"
           className={`flex h-8 items-center gap-2 rounded-md px-2 text-[12.5px] transition-colors ${

@@ -47,7 +47,7 @@ export default function SkillDetailPage({ params }: PageProps) {
     });
     if (!res.ok) return;
     window.dispatchEvent(new Event("reckon:skills-changed"));
-    router.push("/");
+    router.push("/s");
   }, [skill, router]);
 
   if (notFound) {
@@ -56,8 +56,8 @@ export default function SkillDetailPage({ params }: PageProps) {
         <div className="flex flex-1 items-center justify-center text-sm text-fg-2">
           <div className="space-y-2 text-center">
             <p>Skill not found.</p>
-            <Link href="/" className="text-accent hover:underline">
-              Back to home
+            <Link href="/s" className="text-accent hover:underline">
+              Back to skills
             </Link>
           </div>
         </div>
@@ -80,7 +80,7 @@ export default function SkillDetailPage({ params }: PageProps) {
       <div className="flex min-h-0 flex-1 flex-col">
         <header className="flex shrink-0 items-center justify-between border-b border-line bg-bg/80 px-5 py-3 backdrop-blur">
           <div className="flex min-w-0 items-center gap-2">
-            <Link href="/" className="rounded-md p-1 text-fg-3 hover:bg-bg-2 hover:text-fg-1">
+            <Link href="/s" className="rounded-md p-1 text-fg-3 hover:bg-bg-2 hover:text-fg-1">
               <ArrowLeft className="h-4 w-4" />
             </Link>
             <div className="min-w-0">
