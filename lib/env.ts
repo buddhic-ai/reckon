@@ -26,8 +26,8 @@ export const env = {
   dbPath: () => path.resolve(process.cwd(), optional("AGENT_DB_PATH", "./data/agent.db")),
   costCapUsd: () => num("AGENT_COST_CAP_USD", 5),
   autoMemoryMode: (): "off" | "propose" | "on" => {
-    const v = (process.env.AGENT_AUTO_MEMORY ?? "off").trim().toLowerCase();
-    return v === "on" || v === "propose" ? v : "off";
+    const v = (process.env.AGENT_AUTO_MEMORY ?? "on").trim().toLowerCase();
+    return v === "off" || v === "propose" ? v : "on";
   },
   autoMemoryClassifierModel: () =>
     optional("AGENT_AUTO_MEMORY_MODEL", "claude-haiku-4-5-20251001"),

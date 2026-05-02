@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, FileText, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { confirmDialog } from "@/components/ConfirmModal";
 import type { SkillDetail } from "@/lib/skills/schema";
 
 interface PageProps {
@@ -34,7 +35,13 @@ export default function SkillDetailPage({ params }: PageProps) {
 
   const remove = useCallback(async () => {
     if (!skill) return;
-    if (!confirm(`Delete skill "${skill.name}"?`)) return;
+    const ok = await confirmDialog({
+      title: `Delete skill "${skill.name}"?`,
+      description: "Removes the skill folder from .claude/skills/.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const res = await fetch(`/api/skills/${encodeURIComponent(skill.name)}`, {
       method: "DELETE",
     });

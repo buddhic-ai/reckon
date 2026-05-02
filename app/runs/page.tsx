@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Calendar, User, Repeat, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { confirmDialog } from "@/components/ConfirmModal";
 import type { RunRow } from "@/lib/db/runs";
 
 export default function RunsPage() {
@@ -19,7 +20,13 @@ export default function RunsPage() {
 
   const deleteRun = useCallback(async (run: RunRow) => {
     const when = new Date(run.started_at).toLocaleString();
-    if (!confirm(`Delete this run from ${when}?`)) return;
+    const ok = await confirmDialog({
+      title: `Delete this run from ${when}?`,
+      description: "Removes the run record and its event log.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const res = await fetch(`/api/runs/${run.id}`, { method: "DELETE" });
     if (!res.ok) return;
     setRuns((prev) => (prev ? prev.filter((r) => r.id !== run.id) : prev));

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Plus, MessageSquare, GitBranch, History, Trash2, Sparkles, Brain } from "lucide-react";
 import { brand } from "@/lib/brand";
+import { confirmDialog } from "@/components/ConfirmModal";
 import type { ChatRow } from "@/lib/db/chats";
 import type { Workflow as WorkflowDef } from "@/lib/workflow/schema";
 import type { RunStatus } from "@/lib/db/runs";
@@ -126,7 +127,13 @@ export function Sidebar() {
   const deleteChat = useCallback(
     async (chat: ChatRow) => {
       const label = chat.title ?? "Untitled chat";
-      if (!confirm(`Delete chat "${label}"? This removes its run history too.`)) return;
+      const ok = await confirmDialog({
+        title: `Delete chat "${label}"?`,
+        description: "This also removes its run history.",
+        confirmLabel: "Delete",
+        destructive: true,
+      });
+      if (!ok) return;
       const res = await fetch(`/api/chats/${chat.id}`, { method: "DELETE" });
       if (!res.ok) return;
       setChats((prev) => {
@@ -143,7 +150,13 @@ export function Sidebar() {
 
   const deleteWorkflow = useCallback(
     async (wf: WorkflowSummary) => {
-      if (!confirm(`Delete workflow "${wf.name}"?`)) return;
+      const ok = await confirmDialog({
+        title: `Delete workflow "${wf.name}"?`,
+        description: "Stops any cron schedule and removes the workflow definition. Past runs are kept.",
+        confirmLabel: "Delete",
+        destructive: true,
+      });
+      if (!ok) return;
       const res = await fetch(`/api/workflows/${wf.id}`, { method: "DELETE" });
       if (!res.ok) return;
       setWorkflows((prev) => {
@@ -160,7 +173,13 @@ export function Sidebar() {
 
   const deleteSkill = useCallback(
     async (skill: SkillSummary) => {
-      if (!confirm(`Delete skill "${skill.name}"?`)) return;
+      const ok = await confirmDialog({
+        title: `Delete skill "${skill.name}"?`,
+        description: "Removes the skill folder from .claude/skills/.",
+        confirmLabel: "Delete",
+        destructive: true,
+      });
+      if (!ok) return;
       const res = await fetch(`/api/skills/${encodeURIComponent(skill.name)}`, {
         method: "DELETE",
       });
@@ -283,7 +302,7 @@ export function Sidebar() {
           }`}
         >
           <Brain className="h-3.5 w-3.5" />
-          Memory
+          Memories
         </Link>
         <Link
           href="/runs"

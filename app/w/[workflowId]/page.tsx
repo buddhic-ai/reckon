@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Calendar, Play, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { confirmDialog } from "@/components/ConfirmModal";
 import type { Workflow } from "@/lib/workflow/schema";
 import type { RunRow } from "@/lib/db/runs";
 
@@ -100,7 +101,13 @@ export default function WorkflowDetailPage({ params }: PageProps) {
 
   const remove = useCallback(async () => {
     if (!wf) return;
-    if (!confirm(`Delete workflow "${wf.name}"?`)) return;
+    const ok = await confirmDialog({
+      title: `Delete workflow "${wf.name}"?`,
+      description: "Stops any cron schedule and removes the workflow definition. Past runs are kept.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     await fetch(`/api/workflows/${wf.id}`, { method: "DELETE" });
     router.push("/");
   }, [wf, router]);

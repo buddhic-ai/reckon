@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Brain, Clock, Pin, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { confirmDialog } from "@/components/ConfirmModal";
 
 interface MemoryRow {
   id: string;
@@ -58,7 +59,13 @@ export default function MemoriesPage() {
 
   const archive = useCallback(
     async (id: string) => {
-      if (!confirm("Archive this memory?")) return;
+      const ok = await confirmDialog({
+        title: "Archive this memory?",
+        description: "It stops being injected into future runs but stays in the audit log.",
+        confirmLabel: "Archive",
+        destructive: true,
+      });
+      if (!ok) return;
       setBusyId(id);
       try {
         const res = await fetch(`/api/memories/${encodeURIComponent(id)}`, {
