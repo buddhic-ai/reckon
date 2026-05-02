@@ -69,7 +69,7 @@ export function ChatThread({
     <div
       ref={scrollerRef}
       onScroll={onScroll}
-      className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pt-4 pb-24"
+      className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pt-4 pb-32"
     >
       {grouped.map((node, idx) => {
         if (node.kind === "tool_group") {

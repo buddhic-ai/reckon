@@ -382,7 +382,7 @@ export default function ChatPage({ params }: PageProps) {
 
   return (
     <AppShell>
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="relative flex min-h-0 flex-1 flex-col">
         <header className="flex shrink-0 items-center justify-between border-b border-line bg-bg/80 px-5 py-3 backdrop-blur">
           <div className="flex min-w-0 items-center gap-2">
             <Link
@@ -408,14 +408,16 @@ export default function ChatPage({ params }: PageProps) {
           onRetryUserMessage={onRetryUserMessage}
           onEditUserMessage={onEditUserMessage}
         />
-        <PendingMemoryBanner surface={{ kind: "chat", chatId }} />
-        <Composer
-          onSend={startTurn}
-          disabled={streaming}
-          onStop={stopRun}
-          placeholder={streaming ? "Working…" : "Reply to the agent…"}
-          draftKey={`chat:${chatId}:draft`}
-        />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 [&>*]:pointer-events-auto">
+          <PendingMemoryBanner surface={{ kind: "chat", chatId }} />
+          <Composer
+            onSend={startTurn}
+            disabled={streaming}
+            onStop={stopRun}
+            placeholder={streaming ? "Working…" : "Reply to the agent…"}
+            draftKey={`chat:${chatId}:draft`}
+          />
+        </div>
       </div>
     </AppShell>
   );

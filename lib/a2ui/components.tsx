@@ -14,7 +14,7 @@ import {
   PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
-import { TrendingUp, TrendingDown, CheckCircle2, AlertTriangle, AlertOctagon } from "lucide-react";
+import { TrendingUp, TrendingDown, CheckCircle2, AlertTriangle, AlertOctagon, Download } from "lucide-react";
 import { registerComponent, renderChildren, type RenderContext } from "./renderer";
 import type { A2UIComponent } from "./types";
 import type {
@@ -130,13 +130,24 @@ function DataTable(p: TableProps & { id: string }) {
       </div>
     );
   }
+  const handleDownload = () => downloadTableCsv(p.columns, p.rows, p.caption);
   return (
     <div className="overflow-hidden rounded-md border border-line bg-bg">
-      {p.caption ? (
-        <div className="border-b border-line bg-bg-1 px-3 py-1.5 text-[11.5px] font-medium text-fg-1">
-          {p.caption}
-        </div>
-      ) : null}
+      <div className="flex items-center justify-between gap-2 border-b border-line bg-bg-1 px-3 py-1.5">
+        <span className="min-w-0 truncate text-[11.5px] font-medium text-fg-1">
+          {p.caption ?? ""}
+        </span>
+        <button
+          type="button"
+          onClick={handleDownload}
+          title="Download as CSV"
+          aria-label="Download as CSV"
+          className="inline-flex shrink-0 items-center gap-1 rounded border border-line bg-bg px-1.5 py-0.5 text-[10.5px] font-medium text-fg-2 hover:border-line-strong hover:text-fg"
+        >
+          <Download className="h-3 w-3" />
+          CSV
+        </button>
+      </div>
       <div className="max-h-96 overflow-auto">
         <table className="min-w-full text-xs">
           <thead className="bg-bg-1 sticky top-0">
@@ -169,6 +180,39 @@ function DataTable(p: TableProps & { id: string }) {
       </div>
     </div>
   );
+}
+
+function csvEscape(value: unknown): string {
+  if (value == null) return "";
+  const s = String(value);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function downloadTableCsv(
+  columns: string[],
+  rows: Record<string, unknown>[],
+  caption?: string
+): void {
+  const lines = [
+    columns.map(csvEscape).join(","),
+    ...rows.map((r) => columns.map((c) => csvEscape(r[c])).join(",")),
+  ];
+  const csv = "﻿" + lines.join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const slug =
+    (caption ?? "table")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "table";
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${slug}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ─── Chart ──────────────────────────────────────────────────────────────────
