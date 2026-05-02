@@ -1,5 +1,6 @@
 "use client";
 
+import type { AnchorHTMLAttributes, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -57,6 +58,31 @@ function walkNode(node: unknown, parent: MdNode | null): void {
 
 const REMARK_PLUGINS = [remarkGfm, autolinkFilePaths];
 
+// Open file links (uploads + agent-generated downloads under /api/files/...)
+// in a new tab so the chat thread doesn't get replaced by the file. Other
+// links keep default behaviour.
+const MARKDOWN_COMPONENTS = {
+  a({
+    href,
+    children,
+    ...props
+  }: AnchorHTMLAttributes<HTMLAnchorElement> & { children?: ReactNode }) {
+    const isFile = typeof href === "string" && href.startsWith("/api/files/");
+    if (isFile) {
+      return (
+        <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+          {children}
+        </a>
+      );
+    }
+    return (
+      <a href={href} {...props}>
+        {children}
+      </a>
+    );
+  },
+} as const;
+
 interface Props {
   event: RunEvent;
   /** Index of this event in the chat thread's full event list. Required for
@@ -95,7 +121,7 @@ export function MessageItem({
   if (event.type === "thought") {
     return (
       <div className="markdown text-fg-1">
-        <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{event.text}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{event.text}</ReactMarkdown>
       </div>
     );
   }
@@ -105,7 +131,7 @@ export function MessageItem({
       <div className="flex justify-start">
         <div className="max-w-[88%] rounded-2xl rounded-bl-sm bg-bg-1 px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="markdown text-fg">
-            <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{event.text}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{event.text}</ReactMarkdown>
           </div>
         </div>
       </div>
@@ -225,7 +251,7 @@ function UserMessage({
       <div className="flex max-w-[80%] flex-col items-end gap-1">
         <div className="rounded-2xl rounded-br-sm bg-fg px-3.5 py-2 text-[14px] leading-relaxed text-bg">
           <div className="markdown !text-bg [&_*]:!text-bg [&_a]:!text-bg [&_a]:!underline">
-            <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{text}</ReactMarkdown>
           </div>
         </div>
         {showActions ? (
