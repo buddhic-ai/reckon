@@ -101,10 +101,44 @@ export function PendingMemoryBanner({ surface }: PendingMemoryBannerProps) {
     [refresh]
   );
 
+  const dismissAll = useCallback(async () => {
+    const ids = pending.map((p) => p.id);
+    if (ids.length === 0) return;
+    setBusyId("__all__");
+    try {
+      await Promise.all(
+        ids.map((id) =>
+          fetch("/api/memories/decide", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ id, action: "decline" }),
+          }).catch(() => null)
+        )
+      );
+      setEditingId(null);
+      setEditText("");
+      await refresh();
+      window.dispatchEvent(new Event("reckon:memory-decision"));
+    } finally {
+      setBusyId(null);
+    }
+  }, [pending, refresh]);
+
   if (pending.length === 0) return null;
 
   return (
     <div className="mb-3 flex flex-col gap-2">
+      {pending.length >= 2 && (
+        <div className="flex justify-end">
+          <button
+            disabled={busyId !== null}
+            onClick={() => void dismissAll()}
+            className="text-xs text-amber-700 underline-offset-2 hover:underline disabled:opacity-50"
+          >
+            Dismiss all ({pending.length})
+          </button>
+        </div>
+      )}
       {pending.map((p) => {
         const editing = editingId === p.id;
         const text = editing ? editText : p.draftText;
@@ -123,6 +157,15 @@ export function PendingMemoryBanner({ surface }: PendingMemoryBannerProps) {
             <div className="flex items-start gap-2">
               <Brain className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden />
               <div className="flex-1">
+                <button
+                  disabled={busyId !== null}
+                  onClick={() => void decide(p.id, "decline")}
+                  aria-label="Dismiss"
+                  title="Dismiss"
+                  className="float-right -mr-1 -mt-1 ml-2 inline-flex h-6 w-6 items-center justify-center rounded text-amber-700 hover:bg-amber-100 hover:text-amber-900 disabled:opacity-50"
+                >
+                  <X className="h-4 w-4" aria-hidden />
+                </button>
                 <div className="font-medium">
                   Want me to remember this?
                   <span className="ml-2 font-normal text-amber-700">
