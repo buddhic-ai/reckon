@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Composer, type ComposerHandle } from "@/components/Composer";
+import { TipCard } from "@/components/TipCard";
 import { uploadFiles, joinMessageWithAttachments } from "@/components/upload-helper";
 import type { ChipIcon, Suggestion } from "@/lib/home/types";
 
@@ -99,7 +100,9 @@ export function HomeClient({ suggestions }: Props) {
               })}
             </div>
 
-            <div className="flex items-center gap-1.5 text-[11px] text-fg-3">
+            <TipCard />
+
+            <div className="mt-3 flex items-center gap-1.5 text-[11px] text-fg-3">
               <GitBranch className="h-3 w-3" />
               <span>
                 Saved workflows and skills live in the sidebar. Tell the agent <span className="italic">save this as a skill</span> to add one.
