@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowUp, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, Clock, Paperclip, Square, X } from "lucide-react";
 
 export interface ComposerHandle {
   /** Replace the composer's draft with `text` and focus the textarea. */
@@ -84,9 +84,16 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const [skills, setSkills] = useState<SkillRow[]>([]);
   const [mention, setMention] = useState<MentionState | null>(null);
   const [mentionIdx, setMentionIdx] = useState(0);
+  const [queue, setQueue] = useState<{ id: string; text: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const hydrated = useRef(false);
+  const queueIdRef = useRef(0);
+  const prevDisabledRef = useRef<boolean>(disabled === true);
+  const queueRef = useRef(queue);
+  const onSendRef = useRef(onSend);
+  queueRef.current = queue;
+  onSendRef.current = onSend;
 
   useEffect(() => {
     let cancelled = false;
@@ -162,6 +169,20 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`;
   }, [text]);
 
+  // When the agent finishes (disabled flips true → false) and we have queued
+  // messages, flush them as one combined send. Joining with a blank line keeps
+  // them visually distinct in the resulting transcript.
+  useEffect(() => {
+    const wasDisabled = prevDisabledRef.current;
+    const nowDisabled = disabled === true;
+    if (wasDisabled && !nowDisabled && queueRef.current.length > 0) {
+      const combined = queueRef.current.map((q) => q.text).join("\n\n");
+      setQueue([]);
+      onSendRef.current(combined, []);
+    }
+    prevDisabledRef.current = nowDisabled;
+  }, [disabled]);
+
   function insertMention(skill: SkillRow) {
     if (!mention) return;
     const before = text.slice(0, mention.start);
@@ -189,7 +210,23 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
 
   function submit() {
     const t = text.trim();
-    if ((!t && files.length === 0) || disabled) return;
+    // While the agent is responding, hitting send queues the message instead
+    // of dispatching it. The flush effect above sends everything queued as a
+    // single combined message once `disabled` flips back to false.
+    if (disabled) {
+      if (!t) return;
+      const id = `q${++queueIdRef.current}`;
+      setQueue((q) => [...q, { id, text: t }]);
+      setText("");
+      setError(null);
+      if (draftKey) {
+        try {
+          localStorage.removeItem(draftKey);
+        } catch {}
+      }
+      return;
+    }
+    if (!t && files.length === 0) return;
     onSend(t, files);
     setText("");
     setFiles([]);
@@ -199,6 +236,10 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         localStorage.removeItem(draftKey);
       } catch {}
     }
+  }
+
+  function removeQueued(id: string) {
+    setQueue((q) => q.filter((item) => item.id !== id));
   }
 
   function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
@@ -230,7 +271,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     setFiles((fs) => fs.filter((_, i) => i !== idx));
   }
 
-  const canSend = !disabled && (text.trim().length > 0 || files.length > 0);
+  const trimmed = text.trim();
+  const canSend = !disabled && (trimmed.length > 0 || files.length > 0);
+  const canQueue = disabled === true && trimmed.length > 0;
 
   return (
     <div className="px-4 pb-4 pt-1">
@@ -311,6 +354,46 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           </div>
         ) : null}
         <div className="rounded-2xl border border-line bg-bg shadow-[0_4px_16px_rgba(15,23,42,0.06),_0_1px_3px_rgba(15,23,42,0.04)] focus-within:border-line-strong focus-within:shadow-[0_6px_22px_rgba(15,23,42,0.08),_0_2px_4px_rgba(15,23,42,0.05)] transition-shadow">
+          {queue.length > 0 ? (
+            // Queued follow-ups stack above the draft. They flush as a single
+            // combined message the moment the agent finishes (`disabled`
+            // returns to false) — see the flush effect.
+            <div className="flex flex-col gap-1 border-b border-line bg-bg-1/30 px-3 pt-2 pb-2">
+              <div className="flex items-baseline justify-between text-[10px] uppercase tracking-wider text-fg-4">
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock className="h-3 w-3" aria-hidden />
+                  Queued · {queue.length}
+                </span>
+                <span className="text-[10px] tracking-wide text-fg-4">
+                  Sends together when ready
+                </span>
+              </div>
+              <ul className="flex flex-col gap-1">
+                {queue.map((item, i) => (
+                  <li
+                    key={item.id}
+                    className="group flex items-start gap-2 rounded-md bg-bg px-2 py-1 text-[12px] text-fg-1 ring-1 ring-line/60 transition-colors hover:ring-line"
+                  >
+                    <span className="mt-0.5 shrink-0 font-mono text-[10px] tabular text-fg-4">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <p className="line-clamp-2 min-w-0 flex-1 whitespace-pre-wrap break-words leading-snug">
+                      {item.text}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => removeQueued(item.id)}
+                      aria-label="Remove from queue"
+                      title="Remove from queue"
+                      className="shrink-0 rounded p-0.5 text-fg-3 transition-colors hover:bg-bg-2 hover:text-fg"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {files.length > 0 ? (
             <div className="flex flex-wrap gap-1.5 border-b border-line px-3 pt-2.5 pb-2">
               {files.map((f, i) => (
@@ -349,8 +432,12 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               setTimeout(() => setMention(null), 100);
             }}
             rows={2}
-            disabled={disabled}
-            placeholder={placeholder ?? "Send a message…"}
+            // Intentionally not disabled while the agent is running — typing
+            // routes into the queue (see `submit`). Keeping the field live
+            // means follow-up thoughts don't get blocked behind the response.
+            placeholder={
+              placeholder ?? (disabled ? "Queue a follow-up…" : "Send a message…")
+            }
             style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
             className="composer-input px-3 pt-2.5 overflow-y-auto"
             onKeyDown={(e) => {
@@ -411,21 +498,36 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                 <span className="ml-1 text-[11px] text-bad">{error}</span>
               ) : (
                 <span className="ml-1 text-[11px] text-fg-4">
-                  Enter to send · Shift+Enter for newline
+                  {disabled
+                    ? "Enter to queue · Shift+Enter for newline"
+                    : "Enter to send · Shift+Enter for newline"}
                 </span>
               )}
             </div>
 
             {disabled && onStop ? (
-              <button
-                onClick={onStop}
-                type="button"
-                className="inline-flex h-7 items-center gap-1 rounded-md bg-bad px-2.5 text-[12px] font-medium text-white transition-all hover:opacity-90"
-                title="Stop the agent"
-              >
-                <Square className="h-3 w-3 fill-current" />
-                Stop
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={onStop}
+                  type="button"
+                  className="inline-flex h-7 items-center gap-1 rounded-md bg-bad px-2.5 text-[12px] font-medium text-white transition-all hover:opacity-90"
+                  title="Stop the agent"
+                >
+                  <Square className="h-3 w-3 fill-current" />
+                  Stop
+                </button>
+                {canQueue ? (
+                  <button
+                    onClick={submit}
+                    type="button"
+                    className="inline-flex h-7 items-center gap-1 rounded-md border border-line bg-bg px-2.5 text-[12px] font-medium text-fg-1 transition-all hover:border-line-strong hover:bg-bg-1"
+                    title="Add to queue · sends after the current response"
+                  >
+                    <Clock className="h-3 w-3" />
+                    Queue
+                  </button>
+                ) : null}
+              </div>
             ) : (
               <button
                 onClick={submit}
