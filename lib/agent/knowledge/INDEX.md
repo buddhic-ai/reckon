@@ -31,8 +31,12 @@ information is already on disk here.
 After consulting the files above, run queries via the Bash tool:
 
 ```bash
-graphjin cli execute_graphql --query '<read-only graphql>'
+graphjin cli execute_graphql --args '{"query":"<read-only graphql>"}'
 ```
+
+The CLI takes its arguments as a single JSON object via `--args`. Use
+`--args-file <path>` (or `--args-file -` for stdin) when the GraphQL body is
+long enough that quoting it inline gets unwieldy.
 
 **Mutations and subscriptions are not allowed.** Any query containing the words
 `mutation` or `subscription` will be denied at the tool gate.

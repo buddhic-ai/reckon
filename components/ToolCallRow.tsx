@@ -120,16 +120,24 @@ function parseBashCommand(call: ToolCallEvent): string | null {
   }
 }
 
-/** Extract a GraphQL query body from a `graphjin cli execute_graphql --query '...'` invocation. */
+/** Extract a GraphQL query body from a `graphjin cli execute_graphql --args '{"query":"..."}'` invocation. */
 function extractGraphjinQuery(cmd: string): { body: string; opName?: string } | null {
   if (!/\bgraphjin\b/.test(cmd)) return null;
   if (!/\bexecute_graphql\b|\bexecute_saved_query\b|\bexecute_workflow\b/.test(cmd)) return null;
-  // Match either --query 'BODY' or --query "BODY". The body may span lines.
+  // The CLI takes a JSON object via --args '{...}' or --args "{...}".
   const m =
-    cmd.match(/--query\s+'([\s\S]*?)'(?=\s|$)/) ||
-    cmd.match(/--query\s+"([\s\S]*?)"(?=\s|$)/);
+    cmd.match(/--args\s+'([\s\S]*?)'(?=\s|$)/) ||
+    cmd.match(/--args\s+"([\s\S]*?)"(?=\s|$)/);
   if (!m) return null;
-  const body = m[1];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(m[1]);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const body = (parsed as Record<string, unknown>).query;
+  if (typeof body !== "string") return null;
   const opMatch = body.match(/\b(query|mutation|subscription)\s+([A-Za-z_][A-Za-z0-9_]*)/);
   return { body, opName: opMatch?.[2] };
 }

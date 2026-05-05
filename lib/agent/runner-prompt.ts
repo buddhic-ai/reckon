@@ -85,7 +85,7 @@ DO NOT run \`graphjin cli list_tables\`, \`describe_table\`, \`get_schema_insigh
 \`query_syntax\`, etc. — that information is already on disk in the four files.
 
 Run queries via:
-  graphjin cli execute_graphql --query '<read-only graphql>'
+  graphjin cli execute_graphql --args '{"query":"<read-only graphql>"}'
 
 Prefer one bulk query over many small ones. Use aggregations (count, sum, avg)
 where possible.
