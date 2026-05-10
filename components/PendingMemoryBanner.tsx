@@ -143,12 +143,7 @@ export function PendingMemoryBanner({ surface }: PendingMemoryBannerProps) {
         const editing = editingId === p.id;
         const text = editing ? editText : p.draftText;
         const confidencePct = Math.round(p.confidence * 100);
-        const scopeId =
-          p.draftScope === "workflow"
-            ? p.workflowId
-            : p.draftScope === "chat"
-            ? p.chatId
-            : p.draftScopeId;
+        const canSaveToChat = Boolean(p.chatId);
         return (
           <div
             key={p.id}
@@ -169,13 +164,7 @@ export function PendingMemoryBanner({ surface }: PendingMemoryBannerProps) {
                 <div className="font-medium">
                   Want me to remember this?
                   <span className="ml-2 font-normal text-amber-700">
-                    {p.draftKind.replace(/_/g, " ")} ·{" "}
-                    {p.draftScope === "workflow"
-                      ? "this workflow"
-                      : p.draftScope === "chat"
-                      ? "this chat"
-                      : "global"}{" "}
-                    · ~{confidencePct}% confidence
+                    {p.draftKind.replace(/_/g, " ")} · ~{confidencePct}% confidence
                   </span>
                 </div>
                 {editing ? (
@@ -205,11 +194,31 @@ export function PendingMemoryBanner({ surface }: PendingMemoryBannerProps) {
                     <>
                       <button
                         disabled={busyId === p.id || editText.trim().length < 4}
-                        onClick={() => void decide(p.id, "accept", { text: editText })}
+                        onClick={() =>
+                          void decide(p.id, "accept", {
+                            text: editText,
+                            scope: "global",
+                          })
+                        }
                         className="inline-flex items-center gap-1 rounded bg-amber-700 px-2 py-1 text-xs font-medium text-white hover:bg-amber-800 disabled:opacity-50"
                       >
-                        <Check className="h-3 w-3" aria-hidden /> Save edited
+                        <Check className="h-3 w-3" aria-hidden /> Save edited globally
                       </button>
+                      {canSaveToChat && (
+                        <button
+                          disabled={busyId === p.id || editText.trim().length < 4}
+                          onClick={() =>
+                            void decide(p.id, "accept", {
+                              text: editText,
+                              scope: "chat",
+                              scopeId: p.chatId,
+                            })
+                          }
+                          className="inline-flex items-center gap-1 rounded border border-amber-400 bg-white px-2 py-1 text-xs text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                        >
+                          <Check className="h-3 w-3" aria-hidden /> Save edited for this chat
+                        </button>
+                      )}
                       <button
                         disabled={busyId === p.id}
                         onClick={() => {
@@ -225,28 +234,27 @@ export function PendingMemoryBanner({ surface }: PendingMemoryBannerProps) {
                     <>
                       <button
                         disabled={busyId === p.id}
-                        onClick={() => void decide(p.id, "accept")}
+                        onClick={() =>
+                          void decide(p.id, "accept", {
+                            scope: "global",
+                          })
+                        }
                         className="inline-flex items-center gap-1 rounded bg-amber-700 px-2 py-1 text-xs font-medium text-white hover:bg-amber-800 disabled:opacity-50"
                       >
-                        <Check className="h-3 w-3" aria-hidden /> Yes, save{" "}
-                        {p.draftScope === "workflow"
-                          ? "for this workflow"
-                          : p.draftScope === "chat"
-                          ? "for this chat"
-                          : "globally"}
+                        <Check className="h-3 w-3" aria-hidden /> Save globally
                       </button>
-                      {p.draftScope !== "workflow" && p.workflowId && (
+                      {canSaveToChat && (
                         <button
                           disabled={busyId === p.id}
                           onClick={() =>
                             void decide(p.id, "accept", {
-                              scope: "workflow",
-                              scopeId: p.workflowId ?? undefined,
+                              scope: "chat",
+                              scopeId: p.chatId,
                             })
                           }
                           className="inline-flex items-center gap-1 rounded border border-amber-400 bg-white px-2 py-1 text-xs text-amber-900 hover:bg-amber-100"
                         >
-                          Save for this workflow only
+                          Save for this chat only
                         </button>
                       )}
                       <button
@@ -269,11 +277,6 @@ export function PendingMemoryBanner({ surface }: PendingMemoryBannerProps) {
                     </>
                   )}
                 </div>
-                {scopeId && p.draftScope !== "global" && !editing && (
-                  <div className="mt-1 text-[11px] text-amber-700">
-                    scope id: <code>{scopeId}</code>
-                  </div>
-                )}
               </div>
             </div>
           </div>

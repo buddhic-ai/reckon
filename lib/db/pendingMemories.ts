@@ -3,6 +3,7 @@ import { getDb } from "./client";
 import {
   MEMORY_KINDS,
   MEMORY_SCOPES,
+  normalizeNewMemoryScope,
   rememberMemory,
   type MemoryKind,
   type MemoryScope,
@@ -85,6 +86,11 @@ export function createPendingMemory(input: CreatePendingInput): PendingMemory {
   const db = getDb();
   const now = new Date().toISOString();
   const id = ulid();
+  const draftScope = normalizeNewMemoryScope(input.draftScope, {
+    chatId: input.chatId ?? null,
+  });
+  const draftScopeId =
+    draftScope === "chat" ? (input.chatId ?? input.draftScopeId ?? null) : null;
   db.prepare(
     `INSERT INTO pending_memories (
        id, chat_id, run_id, workflow_id, status, draft_text, draft_kind,
@@ -98,8 +104,8 @@ export function createPendingMemory(input: CreatePendingInput): PendingMemory {
     input.workflowId ?? null,
     input.draftText.trim(),
     input.draftKind,
-    input.draftScope,
-    input.draftScopeId ?? null,
+    draftScope,
+    draftScopeId,
     clamp(input.confidence, 0, 1),
     input.reasoning ?? null,
     input.conflicts && input.conflicts.length > 0

@@ -68,9 +68,8 @@ export const TIPS: Tip[] = [
       <>
         When the yellow banner proposes a memory, save it{" "}
         <span className="italic">global</span>,{" "}
-        <span className="italic">this chat</span>, or{" "}
-        <span className="italic">this workflow</span> only. Default is global;
-        narrow it when the fact is local.
+        or <span className="italic">this chat</span> only. Use chat scope when
+        the fact is local to one conversation.
       </>
     ),
   },

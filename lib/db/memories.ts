@@ -97,6 +97,14 @@ export interface SearchLongTermMemoryInput extends MemoryContext {
   includeArchives?: boolean;
 }
 
+export function normalizeNewMemoryScope(
+  scope: MemoryScope | undefined,
+  ctx: { chatId?: string | null } = {}
+): "global" | "chat" {
+  if (scope === "chat" && ctx.chatId) return "chat";
+  return "global";
+}
+
 interface ArchiveCandidateRow {
   run_id: string;
   chat_id: string | null;
@@ -109,7 +117,7 @@ interface ArchiveCandidateRow {
 export function rememberMemory(input: RememberMemoryInput): Memory {
   const db = getDb();
   const now = new Date().toISOString();
-  const scope = input.scope ?? defaultScope(input);
+  const scope = normalizeNewMemoryScope(input.scope, { chatId: input.chatId });
   const scopeId = resolveScopeId(scope, input);
   const id = ulid();
   const pinned = input.pinned ?? shouldPinByDefault(input.kind, scope);
@@ -497,12 +505,8 @@ function formatMemoryLabel(memory: Memory): string {
   return `${memory.kind} (${scope})`;
 }
 
-function defaultScope(input: RememberMemoryInput): MemoryScope {
-  if (input.workflowId && input.kind === "workflow_note") return "workflow";
-  return "global";
-}
-
 function resolveScopeId(scope: MemoryScope, input: RememberMemoryInput): string | null {
+  if (scope === "global") return null;
   if (input.scopeId) return input.scopeId;
   if (scope === "workflow") return input.workflowId ?? null;
   if (scope === "chat") return input.chatId ?? null;

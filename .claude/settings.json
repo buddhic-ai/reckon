@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(pnpm tsc *)",
+      "Bash(gh api *)",
+      "Read(//Users/amit/Teams/Buddhic.ai/Clients/ProtoExpress/cli/**)",
+      "Bash(ssh -i ubuntu-user-key.pem -o StrictHostKeyChecking=no ubuntu@172.17.2.185 'grep -i \"anthropic\\\\|api_key\\\\|claude\" ~/reckon/.env.production 2>/dev/null | sed \"s/=.*/=<REDACTED>/\"')",
+      "Bash(ssh -i ubuntu-user-key.pem -o StrictHostKeyChecking=no ubuntu@172.17.2.185 'echo \"=== next-server process tree ===\"; ps -o pid,ppid,user,etime,cmd -p 56554 2>/dev/null; PPID56=$\\(ps -o ppid= -p 56554 | tr -d \" \"\\); echo; echo \"=== parent \\(ppid=$PPID56\\) ===\"; ps -o pid,ppid,user,etime,cmd -p $PPID56 2>/dev/null; echo; echo \"=== full ancestry ===\"; pid=56554; while [ \"$pid\" != \"1\" ] && [ -n \"$pid\" ]; do ps -o pid,ppid,user,cmd -p $pid --no-headers; pid=$\\(ps -o ppid= -p $pid 2>/dev/null | tr -d \" \"\\); done; echo; echo \"=== shell rc files referencing ANTHROPIC ===\"; grep -Hn \"ANTHROPIC\" ~/.bashrc ~/.bash_profile ~/.profile ~/.zshrc ~/.zprofile /etc/environment /etc/profile 2>/dev/null | sed \"s/=.*/=<REDACTED>/\"; echo; echo \"=== systemd unit \\(if any\\) ===\"; systemctl list-units --type=service --all 2>/dev/null | grep -i reckon; sudo -n find /etc/systemd/system -maxdepth 2 -name \"*reckon*\" 2>/dev/null; echo; echo \"=== pm2 / process managers ===\"; which pm2 && pm2 list 2>/dev/null; echo; echo \"=== swap file owner ===\"; ls -la ~/reckon/.env.production.swp 2>/dev/null; sudo -n lsof ~/reckon/.env.production.swp 2>/dev/null || lsof ~/reckon/.env.production.swp 2>/dev/null')",
+      "Bash(ssh -i ubuntu-user-key.pem -o StrictHostKeyChecking=no ubuntu@172.17.2.185 'cat ~/reckon/ecosystem.config.cjs')",
+      "Bash(ssh -i ubuntu-user-key.pem -o StrictHostKeyChecking=no ubuntu@172.17.2.185 'echo \"=== who is logged in ===\"; who; echo; echo \"=== vim swap status ===\"; ls -la ~/reckon/.env.production.swp; sudo -n fuser ~/reckon/.env.production.swp 2>&1 || fuser ~/reckon/.env.production.swp 2>&1; echo; echo \"=== any vim processes ===\"; pgrep -af \"vim|nvim|vi \" || echo \"\\(none\\)\"; echo; echo \"=== claude pid 58042 details ===\"; ps -o pid,ppid,user,etime,cmd -p 58042 2>/dev/null || echo \"\\(process gone\\)\"; if [ -d /proc/58042 ]; then PPID58=$\\(ps -o ppid= -p 58042 | tr -d \" \"\\); echo \"parent:\"; ps -o pid,ppid,user,cmd -p $PPID58 2>/dev/null; echo \"cwd: $\\(sudo -n readlink /proc/58042/cwd 2>/dev/null || readlink /proc/58042/cwd 2>/dev/null\\)\"; fi; echo; echo \"=== current .env.production key prefix ===\"; awk -F= \"/^ANTHROPIC_API_KEY=/ {print substr\\(\\\\$2,1,18\\)\\\\\"...\\\\\"substr\\(\\\\$2,length\\(\\\\$2\\)-3\\)}\" ~/reckon/.env.production')",
+      "Bash(git push *)",
+      "Bash(pnpm exec *)"
+    ]
+  }
+}

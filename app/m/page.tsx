@@ -82,13 +82,17 @@ export default function MemoriesPage() {
   );
 
   const decide = useCallback(
-    async (id: string, action: "accept" | "decline") => {
+    async (
+      id: string,
+      action: "accept" | "decline",
+      overrides?: { scope?: string; scopeId?: string | null }
+    ) => {
       setBusyId(id);
       try {
         const res = await fetch("/api/memories/decide", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id, action }),
+          body: JSON.stringify({ id, action, ...overrides }),
         });
         if (res.ok) await refresh();
       } finally {
@@ -144,8 +148,8 @@ export default function MemoriesPage() {
                     className="rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-sm text-amber-950"
                   >
                     <div className="font-medium">
-                      {p.draftKind.replace(/_/g, " ")} · {p.draftScope} · ~
-                      {Math.round(p.confidence * 100)}%
+                      {p.draftKind.replace(/_/g, " ")} ·{" "}
+                      {p.chatId ? "chat/global" : "global"} · ~{Math.round(p.confidence * 100)}%
                     </div>
                     <div className="italic text-amber-900">&ldquo;{p.draftText}&rdquo;</div>
                     {p.reasoning && (
@@ -156,11 +160,29 @@ export default function MemoriesPage() {
                     <div className="mt-2 flex gap-2">
                       <button
                         disabled={busyId === p.id}
-                        onClick={() => void decide(p.id, "accept")}
+                        onClick={() =>
+                          void decide(p.id, "accept", {
+                            scope: "global",
+                          })
+                        }
                         className="rounded bg-amber-700 px-2 py-1 text-xs font-medium text-white hover:bg-amber-800"
                       >
-                        Accept
+                        Save globally
                       </button>
+                      {p.chatId ? (
+                        <button
+                          disabled={busyId === p.id}
+                          onClick={() =>
+                            void decide(p.id, "accept", {
+                              scope: "chat",
+                              scopeId: p.chatId,
+                            })
+                          }
+                          className="rounded border border-amber-400 bg-white px-2 py-1 text-xs text-amber-900 hover:bg-amber-100"
+                        >
+                          Save for this chat only
+                        </button>
+                      ) : null}
                       <button
                         disabled={busyId === p.id}
                         onClick={() => void decide(p.id, "decline")}

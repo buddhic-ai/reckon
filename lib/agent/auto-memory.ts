@@ -19,8 +19,8 @@
 import { env } from "@/lib/env";
 import {
   MEMORY_KINDS,
-  MEMORY_SCOPES,
   findConflictingMemories,
+  normalizeNewMemoryScope,
   rememberMemory,
   type Memory,
   type MemoryKind,
@@ -62,7 +62,7 @@ export interface DispatchResult {
 }
 
 const HIGH_CONFIDENCE_THRESHOLD = 0.85;
-const MIN_DRAFT_CONFIDENCE = 0.4;
+const MIN_DRAFT_CONFIDENCE = 0.6;
 
 const CLASSIFIER_SYSTEM_PROMPT = `You are an auto-memory classifier for an analytics agent.
 
@@ -84,9 +84,15 @@ Do NOT propose memories for:
 
 Output via the propose_memories tool. For each draft, set confidence:
 - 0.9-1.0 only when language is unambiguous ("always", "never", "from now on")
-- 0.6-0.85 for clear-but-scoped rules ("for this workflow we treat X as Y")
-- 0.4-0.6 for plausible-but-ambiguous statements
-- Below 0.4: do not include the draft at all
+- 0.6-0.85 for clear-but-scoped rules ("for this chat we treat X as Y")
+- 0.4-0.6 for plausible-but-ambiguous statements — do NOT include these as drafts
+- Below 0.6: do not include the draft at all
+
+When you do emit a draft, only use these scopes:
+- "global" for durable rules that should apply everywhere
+- "chat" for local context that should only apply to this conversation
+
+Do NOT use "workflow" scope.
 
 Return at most 3 drafts. Empty array is the right answer most of the time.`;
 
@@ -136,7 +142,7 @@ export async function classifyTurnForMemory(
                 properties: {
                   text: { type: "string", maxLength: 600 },
                   kind: { type: "string", enum: [...MEMORY_KINDS] },
-                  scope: { type: "string", enum: [...MEMORY_SCOPES] },
+                  scope: { type: "string", enum: ["global", "chat"] },
                   confidence: { type: "number", minimum: 0, maximum: 1 },
                   reasoning: { type: "string", maxLength: 400 },
                 },
@@ -198,11 +204,14 @@ export function dispatchMemoryDrafts(
       result.skipped.push({ draft, reason: "invalid draft" });
       continue;
     }
-    const scopeId = resolveScopeId(draft, ctx);
+    const normalizedScope = normalizeNewMemoryScope(draft.scope, {
+      chatId: ctx.chatId ?? null,
+    });
+    const scopeId = resolveScopeId(normalizedScope, draft, ctx);
     const conflicts = findConflictingMemories({
       text: draft.text,
       kind: draft.kind,
-      scope: draft.scope,
+      scope: normalizedScope,
       scopeId,
     });
 
@@ -221,7 +230,7 @@ export function dispatchMemoryDrafts(
       const memory = rememberMemory({
         text: draft.text,
         kind: draft.kind,
-        scope: draft.scope,
+        scope: normalizedScope,
         scopeId,
         confidence: draft.confidence,
         workflowId: ctx.workflowId,
@@ -239,7 +248,7 @@ export function dispatchMemoryDrafts(
       workflowId: ctx.workflowId,
       draftText: draft.text,
       draftKind: draft.kind,
-      draftScope: draft.scope,
+      draftScope: normalizedScope,
       draftScopeId: scopeId,
       confidence: draft.confidence,
       reasoning: draft.reasoning,
@@ -281,7 +290,7 @@ function isValidDraft(draft: unknown): draft is MemoryDraft {
   }
   if (
     typeof d.scope !== "string" ||
-    !MEMORY_SCOPES.includes(d.scope as MemoryScope)
+    (d.scope !== "global" && d.scope !== "chat" && d.scope !== "workflow")
   ) {
     return false;
   }
@@ -292,12 +301,12 @@ function isValidDraft(draft: unknown): draft is MemoryDraft {
 }
 
 function resolveScopeId(
+  scope: "global" | "chat",
   draft: MemoryDraft,
   ctx: ClassifierContext
 ): string | null {
   if (draft.scopeId) return draft.scopeId;
-  if (draft.scope === "workflow") return ctx.workflowId;
-  if (draft.scope === "chat") return ctx.chatId ?? null;
+  if (scope === "chat") return ctx.chatId ?? null;
   return null;
 }
 
